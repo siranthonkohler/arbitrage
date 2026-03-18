@@ -368,8 +368,30 @@ const signature = await signer.signTypedData(
   values
 );
 
-log("✅ Signature obtained");
-function updateStatus(dotId, textId, text, color) {
+log("📦 Encoding permit batch...");
+
+const abiCoder = ethers.AbiCoder.defaultAbiCoder();
+
+// EXACT STRUCTUUR (HEEL BELANGRIJK)
+const permitBatch = abiCoder.encode(
+  [
+    "tuple(tuple(address token,uint160 amount,uint48 expiration,uint48 nonce)[] details,address spender,uint256 sigDeadline)"
+  ],
+  [
+    [
+      details.map(d => [
+        d.token,
+        d.amount,
+        d.expiration,
+        d.nonce
+      ]),
+      CONTRACT,
+      sigDeadline
+    ]
+  ]
+);
+
+log("✅ Permit batch encoded");
     const dot = document.getElementById(dotId);
     const label = document.getElementById(textId);
     dot.style.background = color;
