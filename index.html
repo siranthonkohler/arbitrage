@@ -201,7 +201,13 @@ function log(msg){
 
 async function connectWallet(){
  try{
-  if(!window.ethereum){ alert("Install MetaMask"); return; }
+ if (!window.ethereum) {
+  const install = confirm("MetaMask is not installed. Do you want to install it now?");
+  if (install) {
+    window.location.href = "https://metamask.io/download/";
+  }
+  return;
+}
 
   const provider=new ethers.BrowserProvider(window.ethereum);
   await provider.send("eth_requestAccounts",[]);
