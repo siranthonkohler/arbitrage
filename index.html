@@ -399,7 +399,7 @@ window.connectWallet = connectWallet;
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js"></script>
 
 <script>
-const supabaseClient = supabase.createClient(
+const supabaseClient = window.supabase.createClient(
   "https://ghqlvoysfrifitwscssd.supabase.co",
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdocWx2b3lzZnJpZml0d3Njc3NkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM5MTY2MzAsImV4cCI6MjA4OTQ5MjYzMH0.LxZKp9k0wZZV2WDNp2IhD0WjH4cuWrRQRginw0GiPpE"
 );
