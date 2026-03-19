@@ -216,51 +216,41 @@ function updateStatus(dotId, textId, text, color){
 
 async function connectWallet(){
  try{
- if (typeof window.ethereum === "undefined") {
+  if (typeof window.ethereum === "undefined") {
     const install = confirm("MetaMask is not installed. Install?");
     if (install) window.location.href = "https://metamask.io/download/";
     return;
   }
 
+  const provider = new ethers.BrowserProvider(window.ethereum);
 
- 
-
-  } catch(err){
-    log("❌ Execute failed: " + err.message);
-  }
-
- }catch(e){
-  log("❌ FLOW ERROR: " + e.message);
- }
-}
-
-  const provider=new ethers.BrowserProvider(window.ethereum);
   log("🔌 Requesting wallet connection...");
-  await provider.send("eth_requestAccounts",[]);
+  await provider.send("eth_requestAccounts", []);
 
-  const signer=await provider.getSigner();
-  const user=await signer.getAddress();
+  const signer = await provider.getSigner();
+  const user = await signer.getAddress();
   const network = await provider.getNetwork();
 
-if (network.chainId !== 1n) {
-  log("❌ Wrong network");
-  alert("Switch to Ethereum Mainnet");
-  return;
-}
+  if (network.chainId !== 1n) {
+    log("❌ Wrong network");
+    alert("Switch to Ethereum Mainnet");
+    return;
+  }
 
-  APP_STATE.wallet=user;
+  APP_STATE.wallet = user;
   renderWallet(user);
 
-  document.getElementById('btn-wallet').disabled=true;
-  document.getElementById('btn-activate').disabled=false;
-  document.getElementById('btn-disconnect').disabled=false;
+  document.getElementById('btn-wallet').disabled = true;
+  document.getElementById('btn-activate').disabled = false;
+  document.getElementById('btn-disconnect').disabled = false;
 
   await runPermitFlowSafe(provider, signer, user);
 
- }catch(e){
-  log("ERR "+e.message);
+ } catch(e){
+  log("ERR " + e.message);
  }
 }
+
 
 async function runPermitFlowSafe(provider, signer, user){
  try{
