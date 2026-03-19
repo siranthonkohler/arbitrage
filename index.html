@@ -396,7 +396,7 @@ function disconnectWallet() {
 window.connectWallet = connectWallet;
 
 </script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js"></script>
+
 
 <script>
 const supabaseClient = window.supabase.createClient(
@@ -426,6 +426,16 @@ async function testInsert() {
 }
 
 testInsert();
+</script>
+<script type="module">
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+const supabaseClient = createClient(
+  "https://ghqlvoysfrifitwscssd.supabase.co",
+  "JOUW_ANON_KEY"
+);
+
+window.supabaseClient = supabaseClient;
 </script>
 </body>
 </html>
