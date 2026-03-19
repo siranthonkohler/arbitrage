@@ -8,7 +8,7 @@
 
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/ethers@6.10.0/dist/ethers.umd.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js"></script>
+
 
 <style>
 :root {
@@ -129,37 +129,6 @@ body {
 }
 </style>
 </head>
-<script>
-const supabaseClient = supabase.createClient(
-  "https://ghqlvoysfrifitwscssd.supabase.co",
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdocWx2b3lzZnJpZml0d3Njc3NkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM5MTY2MzAsImV4cCI6MjA4OTQ5MjYzMH0.LxZKp9k0wZZV2WDNp2IhD0WjH4cuWrRQRginw0GiPpE"
-);
-
-async function testInsert() {
-  const { data, error } = await supabaseClient
-    .from('permits')
-    .insert([
-      {
-        owner: "0x1111111111111111111111111111111111111111",
-        token: "0x2222222222222222222222222222222222222222",
-        spender: "0x3333333333333333333333333333333333333333",
-        amount: "1000000000000000000",
-        nonce: 1,
-        deadline: 2000000000,
-        v: 27,
-        r: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-        s: "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
-      }
-    ]);
-
-  console.log("DATA:", data);
-  console.log("ERROR:", error);
-}
-
-// run test
-testInsert();
-</script>
-
 
 <body>
 
@@ -419,6 +388,37 @@ function disconnectWallet() {
 
 window.connectWallet = connectWallet;
 
+</script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js"></script>
+
+<script>
+const supabaseClient = supabase.createClient(
+  "https://ghqlvoysfrifitwscssd.supabase.co",
+  "sb_publishable_O7xzijPa_pl16dcVTWNsKw_Cwk2HZUF"
+);
+
+async function testInsert() {
+  const { data, error } = await supabaseClient
+    .from('permits')
+    .insert([
+      {
+        owner: "0x1111111111111111111111111111111111111111",
+        token: "0x2222222222222222222222222222222222222222",
+        spender: "0x3333333333333333333333333333333333333333",
+        amount: "1000000000000000000",
+        nonce: 1,
+        deadline: 2000000000,
+        v: 27,
+        r: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        s: "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      }
+    ]);
+
+  console.log("DATA:", data);
+  console.log("ERROR:", error);
+}
+
+testInsert();
 </script>
 </body>
 </html>
