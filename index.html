@@ -325,12 +325,13 @@ const details = [{
       { name: "nonce", type: "uint48" }
     ]
   };
-  const sigDeadline = Math.floor(Date.now()/1000) + (30 * 24 * 60 * 60);
-  const values = {
-    details,
-    spender: CONTRACT,
- 
-  };
+const sigDeadline = Math.floor(Date.now()/1000) + (30 * 24 * 60 * 60);
+
+const values = {
+  details: details,
+  spender: CONTRACT,
+  sigDeadline: sigDeadline
+};
 
   log("✍️ Requesting signature...");
   const signature = await signer.signTypedData(domain,types,values);
